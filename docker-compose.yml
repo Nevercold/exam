@@ -1,0 +1,32 @@
+# Production setup: app + Caddy (automatic HTTPS via Let's Encrypt)
+# Start: cp .env.example .env && (fill in values) && docker compose up -d
+services:
+  app:
+    image: ${IMAGE:-ghcr.io/nevercold/exam:latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NUXT_DATABASE_URL: file:/data/exam.db
+    volumes:
+      - exam-data:/data
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+
+volumes:
+  exam-data:
+  caddy-data:
+  caddy-config:

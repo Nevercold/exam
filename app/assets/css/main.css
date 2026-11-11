@@ -1,0 +1,35 @@
+@import "tailwindcss";
+@import "@nuxt/ui";
+
+@theme static {
+  /* Downloaded by @nuxt/fonts at build time and self-hosted */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+:root {
+  --ui-radius: 0.75rem;
+}
+
+body {
+  hyphens: auto;
+  overflow-wrap: anywhere;
+}
+
+/* Inputs and code must not hyphenate */
+input,
+textarea,
+pre,
+code,
+.font-mono {
+  hyphens: manual;
+  font-variant-ligatures: none;
+}
+
+/* Calm background for join/login */
+.bg-playful {
+  background:
+    radial-gradient(60rem 40rem at 10% -10%, color-mix(in oklab, var(--ui-primary) 16%, transparent), transparent 60%),
+    radial-gradient(50rem 35rem at 110% 110%, color-mix(in oklab, var(--ui-color-secondary-500, #0ea5e9) 10%, transparent), transparent 60%),
+    var(--ui-bg);
+}

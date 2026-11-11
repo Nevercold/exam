@@ -1,0 +1,18 @@
+# App only, without Caddy: for running behind your own reverse proxy (nginx, Traefik, NPM, …)
+# that terminates TLS. The proxy must forward WebSockets (path /_ws) and the Host / X-Forwarded-* headers.
+# Start: cp .env.example .env && (fill in values) && docker compose -f docker-compose.standalone.yml up -d
+services:
+  app:
+    image: ${IMAGE:-ghcr.io/nevercold/exam:latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NUXT_DATABASE_URL: file:/data/exam.db
+    ports:
+      # Bound to localhost by default; use e.g. "3000:3000" if the proxy runs on another host
+      - "${BIND:-127.0.0.1:3000}:3000"
+    volumes:
+      - exam-data:/data
+
+volumes:
+  exam-data:

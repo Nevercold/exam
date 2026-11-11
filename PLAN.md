@@ -38,21 +38,11 @@ First use case: normalization exams (LF 8.2, FISI 2nd year): unnormalized table 
 
 ## Block model
 
-Each block type lives in two places:
-
-```
-shared/blocks/<type>/
-  schema.ts   # zod: config (teacher-defined), solution, answer
-  hints.ts    # pure: (config, answer) => Hint[]
-  pdf.ts      # pure: (config, answer) => pdfmake content
-app/components/blocks/<type>/
-  Editor.vue  # teacher: config + solution
-  Input.vue   # student: answer
-  View.vue    # read-only render (preview, verification page)
-```
-
-A registry in `shared/blocks/index.ts` maps `type` → definitions. An exam's content is
-`{ title, blocks: Block[] }` where each block is `{ id, type, config, solution? }`.
+An exam's content is `{ title, template, blocks: Block[] }`, defined as a zod discriminated union in
+`shared/utils/exam.ts` (also: student view via allow-list, answer schemas, templates, editor warnings).
+Formal hints live in `shared/utils/hints.ts`, PDF rendering in `app/utils/pdf.ts`. Per block type the
+UI has `app/components/blocks/<Type>Editor.vue` (teacher, incl. solution), `<Type>Input.vue` (student)
+and a read-only view (preview, verification page).
 
 ### MVP block types
 
@@ -74,19 +64,21 @@ just an exam whose solution has unchanged tables in every step.
 
 ## Data model (Drizzle)
 
+Accounts, invites, API tokens and OAuth follow Quizzle (see `server/db/schema.ts`):
+
 ```
-users           id, email (unique), name, passwordHash, role ('admin'|'teacher'),
-                disabledAt, createdAt
-invites         id, tokenHash, role, createdBy → users, expiresAt, usedAt
-exams           id, ownerId → users, title, draft (json), released (json|null),
-                releasedAt, sharedWithColleagues (bool), createdAt, updatedAt, archivedAt
-runs            id, examId → exams, startedBy → users, pin, snapshot (json: released content
-                incl. solutions at start), startedAt, endsAt (null = no timer), endedAt
-api_tokens      id, userId → users, name, tokenHash, lastUsedAt, createdAt, revokedAt
-oauth_clients   id, clientId, name, redirectUris (json), createdAt          -- DCR
-oauth_codes     id, codeHash, clientId, userId, codeChallenge, redirectUri, expiresAt, usedAt
-oauth_tokens    id, accessTokenHash, refreshTokenHash, clientId, userId, expiresAt, revokedAt
+user            id, name, email (unique), passwordHash (null until invite redeemed), isAdmin, active
+invite          tokenHash (PK), userId → user, expiresAt, usedAt          -- admin creates user + link
+api_token       id, userId, name, prefix, tokenHash, expiresAt, revokedAt, source ('manual'|'oauth'),
+                oauthClientId, refreshTokenHash, refreshExpiresAt          -- OAuth access tokens are rows here
+oauth_client    id, name, redirectUris                                     -- DCR; CIMD clients not stored
+oauth_code      codeHash, clientId, userId, redirectUri, codeChallenge, scope, expiresAt
+exam            id, ownerId → user, draft (json), draftUpdatedAt, draftUpdatedVia ('editor'|'mcp'),
+                released (json|null), releasedAt, sharedWithColleagues, archivedAt, createdAt
+run             id, examId → exam, startedBy → user, pin, snapshot (json), startedAt, endsAt, endedAt
 ```
+
+The first admin is created from `NUXT_ADMIN_EMAIL`/`NUXT_ADMIN_PASSWORD` on startup.
 
 - Editing (UI or MCP) changes `draft`. "Freigeben" copies `draft` → `released`. Only released
   exams can be started.
@@ -106,14 +98,14 @@ among active runs → projector view with large PIN, QR code (`/p/<pin>`), count
 
 **Export and sign:**
 1. Browser builds canonical JSON `{ v, runId, examTitle, name, answers, exportedAt }`.
-2. Browser sends `{ hash: sha256(json) }` to `POST /api/runs/<pin>/sign`.
+2. Browser sends `{ runId, hash: sha256(json) }` to `POST /api/sign`.
 3. If the run is active, the server returns `signature = Ed25519({ v, runId, hash, signedAt, kid })`.
    Otherwise the browser exports unsigned.
-4. Browser renders the PDF: name, exam title, date, answers, short verification code/QR; the
-   canonical JSON and signature are embedded as a PDF attachment. Unsigned PDFs carry a clear
-   "NICHT SIGNIERT" mark on every page.
+4. Browser renders the PDF: name, exam title, date, answers, short verification code; the
+   submission JSON and signature are embedded in the PDF info dictionary (`ExamSubmission`).
+   Unsigned PDFs carry a clear "NICHT SIGNIERT" mark on every page.
 
-**Verify (teacher):** upload one PDF on `/admin/verify` → browser extracts attachment, recomputes
+**Verify (teacher):** upload one PDF on `/verify` → browser extracts the embedded JSON, recomputes
 the hash and sends only `{ payload, signature }` to `POST /api/verify` → server checks the signature
 and run, returns the run's snapshot including solutions if the teacher has access to the exam →
 page shows: signature status, signed-at time vs. run window, and each block's answer next to the
@@ -124,9 +116,9 @@ solution. The student's name and answers stay in the browser.
 - Server never receives student names or answers; the sign endpoint takes a hash only.
 - No student accounts; nothing about students is stored. Teacher accounts store email, name,
   password hash.
-- Solutions never reach student clients: the student endpoint strips them through a dedicated
-  zod schema; covered by a test per block type.
-- Signing key from env (`SIGNING_PRIVATE_KEY`, PKCS8), key id `kid` in each signature so keys
+- Solutions never reach student clients: the student endpoint strips them through an allow-list
+  zod schema (`toStudentContent`), covered by tests.
+- Signing key from env (`NUXT_SIGNING_PRIVATE_KEY`, PKCS8), key id `kid` in each signature so keys
   can be rotated (old public keys stay configured for verification).
 - Tokens (invites, API, OAuth codes/tokens) stored as SHA-256 hashes only, never sent to clients.
 - Accounts are deactivated, not deleted. Every protected endpoint first checks session/token and
@@ -141,20 +133,19 @@ solution. The student's name and answers stay in the browser.
 
 Each phase ends with green `lint`, `typecheck`, `test`, a commit (and push once a remote exists).
 
-1. **Scaffold** — Nuxt 4, Nuxt UI v4, Inter bundled, ESLint, Vitest, typecheck, Drizzle + libSQL
+1. **Scaffold** ✅ — Nuxt 4, Nuxt UI v4, Inter, ESLint, Vitest, typecheck, Drizzle + libSQL
    with auto-migrations, `/api/health`, CI workflow (lint, typecheck, test, build, migration/schema
-   check), Dockerfile.
-2. **Accounts** — bootstrap admin invite (printed once on first start when no user exists), invite
-   links, login/logout, admin user list, deactivate, rate limits.
+   check), Dockerfile. Domain model (`shared/utils/exam.ts`), hints, signing utils + tests.
+2. **Accounts** ✅ — taken over from Quizzle: admin seed from env, invite links, login/logout, admin user
+   list, deactivate, rate limits, API tokens, OAuth 2.1 authorization server.
 3. **Blocks and editor** — block registry, four MVP blocks (editor, input, view, hints, pdf),
    exam list/editor with draft/release, sharing, copy, normalization template + checks.
 4. **Runs and student view** — start with/without timer, end manually, projector view (PIN, QR,
    countdown), student page at 360 px, hints, autosave, solution-stripping tests.
 5. **PDF and signing** — canonical JSON, sign endpoint, PDF rendering with attachment, unsigned mark.
 6. **Verification** — upload one PDF, signature check, side-by-side with the solution.
-7. **MCP** — `/mcp` (Streamable HTTP), OAuth 2.1 (PKCE, DCR) authorization flow with consent page,
-   personal tokens, tools: `list_block_types`, `get_block_schema`, `list_exams`, `get_exam`,
-   `create_exam`, `update_exam`, `validate_exam`, `preview_exam` (all writes → draft).
+7. **MCP** — `/mcp` (Streamable HTTP, auth from phase 2), resource `exam://schema`, tools:
+   `list_exams`, `get_exam`, `validate_exam`, `create_exam`, `update_exam` (all writes → draft).
 8. **Operations** — Caddy variant, backup script (SQLite online backup) in the image, healthcheck,
    load test bot script (students joining and signing), `docs/deployment.md`.
 

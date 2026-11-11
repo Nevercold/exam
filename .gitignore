@@ -1,8 +1,31 @@
-.idea/
-node_modules/
-.nuxt/
-.output/
-.data/
+# Nuxt
+.output
+.data
+.nuxt
+.nitro
+.cache
+dist
+
+# Dependencies
+node_modules
+
+# Logs
+logs
+*.log
+
+# Lokale Daten (SQLite, Uploads)
+data/
+
+# Env
 .env
-*.db
-*.db-*
+.env.*
+!.env.example
+
+# IDE / OS
+.idea
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+
+# Claude Code lokale Einstellungen
+.claude/settings.local.json

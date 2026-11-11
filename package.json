@@ -1,0 +1,51 @@
+{
+  "name": "exam",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.18.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "nuxt typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:generate": "drizzle-kit generate",
+    "db:check": "drizzle-kit check && drizzle-kit generate && git diff --exit-code -- server/db/migrations && test -z \"$(git status --porcelain -- server/db/migrations)\"",
+    "keygen": "node scripts/keygen.mjs"
+  },
+  "dependencies": {
+    "@iconify-json/lucide": "^1.2.153",
+    "@libsql/client": "^0.18.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@nuxt/ui": "^4.12.0",
+    "drizzle-orm": "^0.45.4",
+    "markdown-it": "^15.0.3",
+    "nuxt": "^4.6.4",
+    "nuxt-auth-utils": "^0.6.2",
+    "pdf-lib": "^1.17.1",
+    "pdfmake": "^0.3.14",
+    "qrcode": "^1.5.4",
+    "tailwindcss": "^4.3.5",
+    "vue": "^3.5.45",
+    "vue-router": "^5.4.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@nuxt/eslint": "^1.17.0",
+    "@types/markdown-it": "^14.2.0",
+    "@types/pdfmake": "^0.3.3",
+    "@types/qrcode": "^1.5.6",
+    "drizzle-kit": "^0.31.11",
+    "eslint": "^10.14.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.1.0",
+    "vue-tsc": "^3.3.14"
+  }
+}
