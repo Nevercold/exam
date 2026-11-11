@@ -84,9 +84,11 @@ export const exams = sqliteTable('exam', {
 }, t => [index('exam_owner_idx').on(t.ownerId)])
 
 /**
- * One sitting of an exam. `snapshot` freezes the released content (incl. solutions) at start,
- * so later edits never change a running or past run. Active while `endedAt` is null and
- * `endsAt` (timer) is null or in the future.
+ * One sitting of an exam. `snapshot` freezes the released content (incl. solutions) when the run is
+ * opened, so later edits never change a running or past run.
+ * Lifecycle: waiting (`startedAt` null: students can join, see only a waiting screen) → running
+ * (content visible, PDFs get signed; timer `endsAt` = start + `durationMinutes`) → ended (`endedAt` set
+ * or `endsAt` passed).
  */
 export const runs = sqliteTable('run', {
   id: id(),
@@ -94,7 +96,10 @@ export const runs = sqliteTable('run', {
   startedBy: text().notNull().references(() => users.id),
   pin: text().notNull(),
   snapshot: text({ mode: 'json' }).$type<ExamContent>().notNull(),
-  startedAt: createdAt(),
+  // null = no timer, ended manually
+  durationMinutes: integer(),
+  createdAt: integer({ mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+  startedAt: integer({ mode: 'timestamp' }),
   endsAt: integer({ mode: 'timestamp' }),
   endedAt: integer({ mode: 'timestamp' }),
 }, t => [index('run_pin_idx').on(t.pin), index('run_exam_idx').on(t.examId)])

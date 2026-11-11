@@ -5,6 +5,9 @@ import { z } from 'zod'
 
 export const SUBMISSION_VERSION = 1
 
+/** After the run ends (timer or teacher), PDFs are still signed for this long so everyone can export. */
+export const SIGN_GRACE_MS = 10 * 60_000
+
 export const studentNameSchema = z.string().trim().min(2, 'Bitte vollständigen Namen eingeben').max(100, 'Maximal 100 Zeichen')
 
 export const submissionSchema = z.object({
@@ -42,6 +45,14 @@ export const embeddedSubmissionSchema = z.object({
 })
 
 export type EmbeddedSubmission = z.infer<typeof embeddedSubmissionSchema>
+
+/** Random, anonymous id of a student browser, only used for the head count on the projector. */
+export const clientIdSchema = z.string().regex(/^[\w-]{8,64}$/)
+
+export const presenceRequestSchema = z.object({
+  runId: z.string().min(1).max(64),
+  clientId: clientIdSchema,
+})
 
 export const signRequestSchema = z.object({
   runId: z.string().min(1).max(64),

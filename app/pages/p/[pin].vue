@@ -11,6 +11,7 @@ definePageMeta({ layout: false })
 useHead({ title: 'Prüfung · exam' })
 
 type JoinResponse = { runId: string, endsAt: string | null, serverNow: string, content: StudentContent }
+type JoinResult = { status: 'waiting', runId: string } | ({ status: 'running' } & JoinResponse)
 type Cached = Omit<JoinResponse, 'serverNow'>
 
 const cacheKey = `exam:run:${pin}`
@@ -18,6 +19,10 @@ const run = ref<JoinResponse | null>(null)
 const offline = ref(false)
 const loadError = ref<string | null>(null)
 const loading = ref(true)
+// The run is open but not started yet: show a waiting screen and poll
+const waiting = ref(false)
+let waitTimer: ReturnType<typeof setTimeout> | undefined
+onBeforeUnmount(() => clearTimeout(waitTimer))
 
 const name = ref('')
 const answers = ref<Answers>({})
@@ -44,9 +49,16 @@ function writeStorage(key: string, value: unknown) {
 }
 
 async function load() {
-  loading.value = true
+  clearTimeout(waitTimer)
   try {
-    const res = await $fetch<JoinResponse>(`/api/join/${pin}`)
+    const res = await $fetch<JoinResult>(`/api/join/${pin}`, { query: { client } })
+    if (res.status === 'waiting') {
+      waiting.value = true
+      // Jitter so a whole class doesn't poll in lockstep
+      waitTimer = setTimeout(load, 2500 + Math.random() * 1500)
+      return
+    }
+    waiting.value = false
     run.value = res
     offline.value = false
     writeStorage(cacheKey, { runId: res.runId, endsAt: res.endsAt, content: res.content } satisfies Cached)
@@ -54,8 +66,20 @@ async function load() {
   catch (err) {
     const cached = readStorage<Cached>(cacheKey)
     if (cached) {
+      waiting.value = false
       run.value = { ...cached, serverNow: new Date().toISOString() }
       offline.value = true
+    }
+    else if (waiting.value) {
+      // Network hiccup while waiting: keep waiting; a cancelled run shows the error on 404
+      if ((err as { statusCode?: number })?.statusCode === 404) {
+        waiting.value = false
+        loadError.value = 'Die Prüfung wurde abgebrochen.'
+      }
+      else {
+        waitTimer = setTimeout(load, 5000)
+      }
+      return
     }
     else {
       loadError.value = errorMessage(err, 'Die Prüfung konnte nicht geladen werden.')
@@ -73,7 +97,43 @@ async function load() {
   }
 }
 
-onMounted(load)
+// --- presence: random anonymous id per browser, only for the head count on the projector ---
+function clientId() {
+  const key = 'exam:client'
+  let id = readStorage<string>(key)
+  if (!id || !clientIdSchema.safeParse(id).success) {
+    id = [...crypto.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2, '0')).join('')
+    writeStorage(key, id)
+  }
+  return id
+}
+const client = import.meta.client ? clientId() : ''
+
+// Ended by the teacher (the timer end is detected locally by the countdown)
+const endedByTeacher = ref(false)
+// End of the grace period in which PDFs are still signed, as reported by the server
+const serverSignUntil = ref<Date | null>(null)
+let heartbeat: ReturnType<typeof setInterval> | undefined
+async function sendHeartbeat() {
+  if (!run.value || offline.value || endedByTeacher.value) return
+  try {
+    const res = await $fetch<{ status: 'waiting' | 'running' | 'ended', signUntil: string | null }>('/api/presence', {
+      method: 'POST',
+      body: { runId: run.value.runId, clientId: client },
+    })
+    serverSignUntil.value = res.signUntil ? new Date(res.signUntil) : null
+    if (res.status === 'ended') endedByTeacher.value = true
+  }
+  catch {
+    // Offline for a moment: nothing to do, the next heartbeat retries
+  }
+}
+
+onMounted(() => {
+  load()
+  heartbeat = setInterval(sendHeartbeat, 20_000)
+})
+onBeforeUnmount(() => clearInterval(heartbeat))
 
 // --- autosave ---
 let saveTimer: ReturnType<typeof setTimeout> | undefined
@@ -89,6 +149,13 @@ watch([name, answers], () => {
 const { label: remaining, remainingMs, expired } = useCountdown(() => run.value?.endsAt, () => run.value?.serverNow)
 const lowTime = computed(() => remainingMs.value !== null && remainingMs.value < 5 * 60_000)
 const timeFormat = new Intl.DateTimeFormat('de-DE', { timeStyle: 'short' })
+
+// After the end, PDFs are still signed during the grace period
+const signUntil = computed(() => serverSignUntil.value
+  ?? (run.value?.endsAt ? new Date(new Date(run.value.endsAt).getTime() + SIGN_GRACE_MS) : null))
+const endedText = computed(() => signUntil.value && signUntil.value > new Date()
+  ? `Exportiere jetzt dein PDF: Es wird noch bis ${timeFormat.format(signUntil.value)} Uhr signiert.`
+  : 'PDFs, die du jetzt erstellst, sind nicht mehr signiert.')
 
 // --- export ---
 const nameError = computed(() => {
@@ -149,7 +216,7 @@ async function exportPdf() {
   <div class="w-full min-h-dvh flex flex-col">
     <!-- Sticky bar: title, timer, export -->
     <header class="sticky top-0 z-10 border-b border-default bg-default/90 backdrop-blur">
-      <div class="max-w-4xl mx-auto px-4 py-2 flex items-center gap-3">
+      <div class="px-4 sm:px-6 py-2 flex items-center gap-3">
         <AppLogo
           icon-only
           class="shrink-0"
@@ -179,7 +246,7 @@ async function exportPdf() {
       </div>
     </header>
 
-    <main class="flex-1 w-full max-w-4xl mx-auto px-4 py-6 flex flex-col gap-8">
+    <main class="flex-1 w-full px-4 sm:px-6 py-6 flex flex-col gap-8">
       <div
         v-if="loading"
         class="flex justify-center py-24"
@@ -188,6 +255,23 @@ async function exportPdf() {
           name="i-lucide-loader-circle"
           class="size-8 animate-spin text-muted"
         />
+      </div>
+
+      <div
+        v-else-if="waiting"
+        class="flex flex-col items-center gap-4 py-24 text-center"
+        aria-live="polite"
+      >
+        <UIcon
+          name="i-lucide-loader-circle"
+          class="size-12 animate-spin text-primary"
+        />
+        <p class="text-xl font-semibold">
+          Gleich geht's los
+        </p>
+        <p class="text-muted max-w-xs">
+          Die Prüfung erscheint automatisch, sobald deine Lehrkraft sie startet. Lass diese Seite geöffnet.
+        </p>
       </div>
 
       <UCard
@@ -216,16 +300,16 @@ async function exportPdf() {
           color="warning"
           variant="subtle"
           title="Prüfung beendet oder Server nicht erreichbar"
-          description="Du kannst weiterarbeiten, aber ein jetzt erstelltes PDF ist nicht signiert."
+          :description="`Du kannst weiterarbeiten. Signiert wird nur bis ${SIGN_GRACE_MS / 60_000} Minuten nach Prüfungsende und mit Verbindung zum Server; nach dem Export siehst du, ob dein PDF signiert ist.`"
           :actions="[{ label: 'Erneut verbinden', icon: 'i-lucide-refresh-cw', onClick: load }]"
         />
         <UAlert
-          v-else-if="expired"
+          v-else-if="expired || endedByTeacher"
           icon="i-lucide-timer-off"
           color="error"
           variant="subtle"
-          title="Die Zeit ist abgelaufen"
-          description="PDFs, die du jetzt erstellst, sind nicht signiert."
+          :title="endedByTeacher && !expired ? 'Die Prüfung wurde beendet' : 'Die Zeit ist abgelaufen'"
+          :description="endedText"
         />
 
         <UFormField
@@ -261,8 +345,9 @@ async function exportPdf() {
             </h2>
             <p class="text-sm text-muted">
               Erstelle am Ende ein PDF und lade es selbst in der Schulcloud hoch. Du kannst mehrmals exportieren;
-              es zählt das zuletzt hochgeladene PDF. Signiert wird nur, solange die Prüfung läuft<template v-if="run.endsAt">
-                (bis {{ timeFormat.format(new Date(run.endsAt)) }} Uhr)
+              es zählt das zuletzt hochgeladene PDF. Signiert wird während der Prüfung und bis
+              {{ SIGN_GRACE_MS / 60_000 }} Minuten nach ihrem Ende<template v-if="signUntil">
+                (bis {{ timeFormat.format(signUntil) }} Uhr)
               </template>.
             </p>
             <UButton

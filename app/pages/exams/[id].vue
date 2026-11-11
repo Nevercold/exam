@@ -173,6 +173,7 @@ const runsOpen = ref(false)
 const { data: runs, refresh: refreshRuns } = useLazyFetch<RunInfo[]>(`/api/exams/${id}/runs`, { immediate: false, default: () => [] })
 watch(runsOpen, open => open && refreshRuns())
 const dateTime = new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' })
+const RUN_STATUS_LABELS = { waiting: 'wartet auf Start', running: 'läuft', ended: 'beendet' } as const
 
 // --- preview ---
 const previewContent = computed(() => {
@@ -387,7 +388,7 @@ const previewAnswers = ref<Answers>({})
             />
             <div
               v-if="previewContent"
-              class="max-w-4xl flex flex-col gap-8"
+              class="flex flex-col gap-8"
             >
               <h1 class="text-2xl font-bold">
                 {{ previewContent.title }}
@@ -456,12 +457,12 @@ const previewAnswers = ref<Answers>({})
               class="py-2 flex items-center gap-3"
             >
               <UBadge
-                :color="run.active ? 'success' : 'neutral'"
+                :color="run.status === 'running' ? 'success' : run.status === 'waiting' ? 'warning' : 'neutral'"
                 variant="subtle"
               >
-                {{ run.active ? 'läuft' : 'beendet' }}
+                {{ RUN_STATUS_LABELS[run.status] }}
               </UBadge>
-              <span class="flex-1 text-sm">{{ dateTime.format(new Date(run.startedAt)) }}</span>
+              <span class="flex-1 text-sm">{{ dateTime.format(new Date(run.startedAt ?? run.createdAt)) }}</span>
               <span class="font-mono text-sm text-muted">{{ run.pin }}</span>
               <UButton
                 :to="`/runs/${run.id}`"

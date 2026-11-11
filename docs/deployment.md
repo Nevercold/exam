@@ -31,7 +31,7 @@ node scripts/load-test.mjs https://exam.example.org <PIN> 30 3   # start a run f
 
 ### Single instance
 
-Rate limits are kept in memory, so run **exactly one** container. Runs are stored in the database: a restart
+Rate limits and the head count on the projector are kept in memory, so run **exactly one** container. Runs are stored in the database: a restart
 does not end running exams, and students keep working in their browsers while the server is briefly gone
 (signing is retried with their next export).
 

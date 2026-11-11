@@ -12,8 +12,9 @@ First use case: normalization exams (LF 8.2, FISI 2nd year): unnormalized table 
 |---|---|
 | Submission | PDF only, downloaded by the student, uploaded by them to the school cloud |
 | Student identity | Name typed into the exam page, printed on the PDF, never sent to the server |
-| Run control | Teacher starts a run with a timer (minutes) or without one; can end it manually at any time |
-| After the run ends | Export still possible, but the PDF is **unsigned** and visibly marked as such |
+| Run control | Teacher opens a run (timer in minutes or none) → students join and see only a waiting screen → teacher clicks "Prüfung starten": content appears, timer starts. End manually any time (or cancel while waiting) |
+| Head count | Projector shows how many students are connected: anonymous random id per browser, in memory only |
+| After the run ends | PDFs are still signed for **10 minutes** (grace period, marked on the verification page); after that exports are **unsigned** and visibly marked |
 | Multiple exports | Allowed; each PDF carries its own signature timestamp, the teacher uses the latest |
 | Roles | `admin` (invites, deactivates) and `teacher`; accounts via invite link only |
 | Sharing | An exam can be shared with all colleagues; everyone with access can view (incl. solution), edit, copy and start it |
@@ -88,19 +89,22 @@ The first admin is created from `NUXT_ADMIN_EMAIL`/`NUXT_ADMIN_PASSWORD` on star
 
 ## Flows
 
-**Start a run (teacher):** pick a released exam → optional timer → run gets a 6-digit PIN unique
-among active runs → projector view with large PIN, QR code (`/p/<pin>`), countdown, "Beenden" button
-(keyboard accessible).
+**Run a sitting (teacher):** pick a released exam → optional timer → run opens in the **waiting** state
+with a 6-digit PIN unique among open runs → projector view with large PIN, QR code (`/p/<pin>`) and the
+number of connected students → "Prüfung starten" sets `startedAt` and `endsAt` → countdown, "Beenden"
+button (keyboard accessible).
 
-**Take the exam (student):** open QR/enter PIN → server returns the snapshot **without solutions**
-→ enter name, work through blocks, see formal hints → answers autosaved in `localStorage`
-(per run id) → "PDF exportieren".
+**Take the exam (student):** open QR/enter PIN → waiting screen, polling `/api/join/<pin>` every ~3 s
+(no content is sent before the start) → after the start the server returns the snapshot **without
+solutions** → enter name, work through blocks, see formal hints → answers autosaved in `localStorage`
+(per run id), heartbeat every 20 s (`/api/presence`: head count + detects a manual end) →
+"PDF exportieren".
 
 **Export and sign:**
 1. Browser builds canonical JSON `{ v, runId, examTitle, name, answers, exportedAt }`.
 2. Browser sends `{ runId, hash: sha256(json) }` to `POST /api/sign`.
-3. If the run is active, the server returns `signature = Ed25519({ v, runId, hash, signedAt, kid })`.
-   Otherwise the browser exports unsigned.
+3. If the run is running or ended less than 10 minutes ago (`SIGN_GRACE_MS`), the server returns
+   `signature = Ed25519({ v, runId, hash, signedAt, kid })`. Otherwise the browser exports unsigned.
 4. Browser renders the PDF: name, exam title, date, answers, short verification code; the
    submission JSON and signature are embedded in the PDF info dictionary (`ExamSubmission`).
    Unsigned PDFs carry a clear "NICHT SIGNIERT" mark on every page.

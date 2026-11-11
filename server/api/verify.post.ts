@@ -13,12 +13,17 @@ export default defineEventHandler(async (event) => {
 
   const signedAt = new Date(envelope.payload.signedAt)
   const end = run ? runEnd(run) : null
-  const withinRun = !!run && signedAt >= run.startedAt && (end === null || signedAt <= end)
+  const deadline = run ? signDeadline(run) : null
+  // Within the signing window: start until end + grace period
+  const withinRun = !!run?.startedAt && signedAt >= run.startedAt && (deadline === null || signedAt <= deadline)
+  // Signed after the end, during the grace period (answers may have changed after the end)
+  const inGracePeriod = withinRun && end !== null && signedAt > end
 
   return {
     validSignature,
     runFound: !!run,
     withinRun,
+    inGracePeriod,
     run: run ? { id: run.id, title: run.snapshot.title, startedAt: run.startedAt, endsAt: run.endsAt, endedAt: run.endedAt } : null,
     // Solutions only for teachers with access to the exam
     access,

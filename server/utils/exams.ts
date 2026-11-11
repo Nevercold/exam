@@ -1,4 +1,5 @@
 import { and, desc, eq, gt, isNull, or } from 'drizzle-orm'
+import { SIGN_GRACE_MS } from '../../shared/utils/submission'
 import type { ExamRow, RunRow } from '../db/schema'
 
 // Access rule: the owner and, if shared, every (active) teacher. Everyone with access sees the
@@ -64,45 +65,72 @@ export type ExamSummary = ReturnType<typeof toExamSummary>
 
 // ---------- Runs ----------
 
-export function isRunActive(run: Pick<RunRow, 'endedAt' | 'endsAt'>, now = new Date()) {
-  return run.endedAt === null && (run.endsAt === null || run.endsAt > now)
+export type RunStatus = 'waiting' | 'running' | 'ended'
+
+type RunTimes = Pick<RunRow, 'startedAt' | 'endsAt' | 'endedAt'>
+
+export function runStatus(run: RunTimes, now = new Date()): RunStatus {
+  if (run.endedAt !== null || (run.endsAt !== null && run.endsAt <= now)) return 'ended'
+  return run.startedAt === null ? 'waiting' : 'running'
 }
 
-/** When the run stopped accepting signatures (null while active without timer). */
+/** Running = content visible and PDFs get signed. Not while waiting for the start. */
+export const isRunActive = (run: RunTimes, now = new Date()) => runStatus(run, now) === 'running'
+
+/** When the run stopped accepting signatures (null while running without timer). */
 export function runEnd(run: Pick<RunRow, 'endedAt' | 'endsAt'>): Date | null {
   if (run.endedAt && run.endsAt) return run.endedAt < run.endsAt ? run.endedAt : run.endsAt
   return run.endedAt ?? run.endsAt
 }
 
-const activeRunCondition = (now: Date) =>
+/** Until when PDFs get signed: run end + grace period (null = running without timer). */
+export function signDeadline(run: Pick<RunRow, 'endedAt' | 'endsAt'>): Date | null {
+  const end = runEnd(run)
+  return end ? new Date(end.getTime() + SIGN_GRACE_MS) : null
+}
+
+/** Signing is possible from the start until the grace period after the end is over. */
+export function canSign(run: RunTimes, now = new Date()) {
+  if (run.startedAt === null) return false
+  const deadline = signDeadline(run)
+  return deadline === null || now <= deadline
+}
+
+// Waiting or running: students can join, the PIN is taken
+const openRunCondition = (now: Date) =>
   and(isNull(tables.runs.endedAt), or(isNull(tables.runs.endsAt), gt(tables.runs.endsAt, now)))
 
-export async function findActiveRunByPin(pin: string, now = new Date()) {
+export async function findOpenRunByPin(pin: string, now = new Date()) {
   return await useDb().select().from(tables.runs)
-    .where(and(eq(tables.runs.pin, pin), activeRunCondition(now)))
-    .orderBy(desc(tables.runs.startedAt))
+    .where(and(eq(tables.runs.pin, pin), openRunCondition(now)))
+    .orderBy(desc(tables.runs.createdAt))
     .get() ?? null
 }
 
-/** Random 6-digit PIN that no active run uses. */
+/** Random 6-digit PIN that no open run uses. */
 export async function generatePin(): Promise<string> {
   for (let attempt = 0; attempt < 50; attempt++) {
     const pin = String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0]! % 900000))
-    if (!await findActiveRunByPin(pin)) return pin
+    if (!await findOpenRunByPin(pin)) return pin
   }
   throw createError({ statusCode: 503, message: 'Keine freie PIN gefunden. Bitte erneut versuchen.' })
 }
 
 export function toRunInfo(run: RunRow, now = new Date()) {
+  const status = runStatus(run, now)
   return {
     id: run.id,
     examId: run.examId,
     title: run.snapshot.title,
     pin: run.pin,
+    durationMinutes: run.durationMinutes,
+    createdAt: run.createdAt,
     startedAt: run.startedAt,
     endsAt: run.endsAt,
     endedAt: run.endedAt,
-    active: isRunActive(run, now),
+    signUntil: run.startedAt ? signDeadline(run) : null,
+    status,
+    active: status === 'running',
   }
 }
 

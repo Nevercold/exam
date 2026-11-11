@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Starts a run of a released exam: with a timer (minutes) or ended manually.
+// Opens a run of a released exam in the waiting state; the teacher starts it on the projector view.
 const props = defineProps<{ examId: string | null, title?: string }>()
 const emit = defineEmits<{ close: [] }>()
 const toast = useToast()
@@ -20,7 +20,7 @@ async function start() {
     await navigateTo(`/runs/${run.id}`)
   }
   catch (err) {
-    toast.add({ title: errorMessage(err, 'Start fehlgeschlagen'), color: 'error' })
+    toast.add({ title: errorMessage(err, 'Vorbereiten fehlgeschlagen'), color: 'error' })
   }
   finally {
     starting.value = false
@@ -31,16 +31,20 @@ async function start() {
 <template>
   <UModal
     :open="!!examId"
-    title="Prüfung starten"
+    title="Prüfung vorbereiten"
     :description="title"
     @update:open="(v: boolean) => { if (!v) emit('close') }"
   >
     <template #body>
       <div class="flex flex-col gap-4">
+        <p class="text-sm text-muted">
+          Die Schüler treten mit PIN oder QR-Code bei und sehen zunächst nur einen Wartebildschirm.
+          Prüfung und Timer starten erst, wenn du auf der Beamer-Seite auf „Prüfung starten“ klickst.
+        </p>
         <USwitch
           v-model="withTimer"
           label="Mit Timer"
-          description="Ohne Timer beendest du die Prüfung selbst. Danach erstellte PDFs sind nicht signiert."
+          :description="`Ohne Timer beendest du die Prüfung selbst. Nach dem Ende werden PDFs noch ${SIGN_GRACE_MS / 60_000} Minuten lang signiert.`"
         />
         <UFormField
           v-if="withTimer"
@@ -65,12 +69,12 @@ async function start() {
           Abbrechen
         </UButton>
         <UButton
-          icon="i-lucide-play"
+          icon="i-lucide-presentation"
           :loading="starting"
           :disabled="withTimer && !minutes"
           @click="start"
         >
-          Starten
+          Zur Beamer-Ansicht
         </UButton>
       </div>
     </template>

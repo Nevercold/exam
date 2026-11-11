@@ -8,7 +8,8 @@ type VerifyResponse = {
   validSignature: boolean
   runFound: boolean
   withinRun: boolean
-  run: { id: string, title: string, startedAt: string, endsAt: string | null, endedAt: string | null } | null
+  inGracePeriod: boolean
+  run: { id: string, title: string, startedAt: string | null, endsAt: string | null, endedAt: string | null } | null
   access: boolean
   snapshot: ExamContent | null
 }
@@ -80,6 +81,9 @@ const verdict = computed<Verdict | null>(() => {
   if (!r.server.withinRun) {
     return { color: 'warning', icon: 'i-lucide-shield-alert', title: 'Signiert außerhalb der Prüfungszeit', description: 'Die Signatur ist gültig, liegt aber nicht im Zeitraum des Durchgangs.' }
   }
+  if (r.server.inGracePeriod) {
+    return { color: 'success', icon: 'i-lucide-shield-check', title: 'Signatur gültig (in der Nachfrist)', description: `Das PDF wurde in den ${SIGN_GRACE_MS / 60_000} Minuten nach Prüfungsende erstellt und seitdem nicht verändert. Antworten können nach dem Ende noch geändert worden sein.` }
+  }
   return { color: 'success', icon: 'i-lucide-shield-check', title: 'Signatur gültig', description: 'Das PDF wurde während der Prüfung erstellt und seitdem nicht verändert.' }
 })
 
@@ -124,7 +128,7 @@ const asText = (v: unknown) => (typeof v === 'string' ? v : '')
     </template>
 
     <template #body>
-      <div class="max-w-6xl w-full mx-auto flex flex-col gap-6">
+      <div class="w-full flex flex-col gap-6">
         <label
           class="shrink-0 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-8 text-center cursor-pointer transition-colors"
           :class="dragging ? 'border-primary bg-primary/5' : 'border-default hover:bg-elevated/50'"
@@ -194,7 +198,10 @@ const asText = (v: unknown) => (typeof v === 'string' ? v : '')
                 <dt class="text-muted">
                   Durchgang
                 </dt>
-                <dd>
+                <dd v-if="!result.server.run.startedAt">
+                  nie gestartet
+                </dd>
+                <dd v-else>
                   {{ dateTime.format(new Date(result.server.run.startedAt)) }}
                   <template v-if="result.server.run.endedAt || result.server.run.endsAt">
                     bis {{ dateTime.format(new Date((result.server.run.endedAt ?? result.server.run.endsAt)!)) }}

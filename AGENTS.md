@@ -81,6 +81,8 @@ test/               Vitest unit tests (pure logic, no Nuxt context)
 - **Student data:** the server never receives student names or answers. `/api/sign` takes a hash only; the
   verification page extracts and hashes the PDF content in the browser.
 - **Solutions:** content reaches students only through `toStudentContent()` (allow-list schema, tested).
+- **Run lifecycle:** `runStatus()` (waiting → running → ended) and `canSign()` (running + 10 min grace) in
+  `server/utils/exams.ts` are the single source of truth; no content is sent while a run is waiting.
 - **DB access:** `useDb()` + `tables.<name>`. Never send password/token hashes to the client (`toPublicUser`).
 - **Performance (school Wi-Fi!):** student pages use the lean `default` layout. pdfmake/pdf-lib are loaded lazily
   on export only. No external CDNs, fonts or icon APIs. Icons only from `@iconify-json/lucide`.
@@ -126,5 +128,8 @@ test/               Vitest unit tests (pure logic, no Nuxt context)
 - OAuth: never redirect to an unverified `redirect_uri`. OAuth access tokens are `api_token` rows, so `/mcp` has a
   single auth path (`requireApiTokenUser`). The consent page must stay non-frameable (`routeRules`).
 - MCP write tools save via `saveDraft(…, 'mcp')`/`createExam(…, 'mcp')`; only the teacher releases in the UI.
+- drizzle-kit generates libSQL-only `ALTER COLUMN` for nullability changes and `NOT NULL` columns without
+  defaults; rewrite such migrations as a portable table rebuild before committing (see `0001_run_lobby.sql`).
+- Screenshots of a background tab can be taken before hydration: wait or re-take before judging the UI.
 - Without `NUXT_SIGNING_PRIVATE_KEY` the dev server uses an ephemeral key (PDFs unverifiable after restart);
   production refuses to sign.

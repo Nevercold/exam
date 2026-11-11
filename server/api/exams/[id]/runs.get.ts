@@ -5,7 +5,7 @@ export default defineEventHandler(async (event) => {
   const exam = await requireExamAccess(getRouterParam(event, 'id')!, me.id)
   const rows = await useDb().select().from(tables.runs)
     .where(eq(tables.runs.examId, exam.id))
-    .orderBy(desc(tables.runs.startedAt))
+    .orderBy(desc(tables.runs.createdAt))
     .limit(100)
     .all()
   const now = new Date()
