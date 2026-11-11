@@ -22,9 +22,10 @@ onMounted(() => (origin.value = new URL(window.location.origin)))
 const joinUrl = computed(() => origin.value ? `${origin.value.origin}/p/${run.value?.pin}` : '')
 const joinHost = computed(() => origin.value?.host ?? '')
 // SVG is generated locally by uqr from our own URL, no user input.
-// crispEdges: modules snap to device pixels, no anti-aliased seams between them when scaled
+// border 4 = the quiet zone the QR spec asks for: scanners need it, and the rounded corners of the box
+// stay clear of the finder patterns. crispEdges: no anti-aliased seams between modules when scaled.
 const qrSvg = computed(() => joinUrl.value
-  ? renderSVG(joinUrl.value, { border: 1 }).replace('<svg ', '<svg shape-rendering="crispEdges" ')
+  ? renderSVG(joinUrl.value, { border: 4 }).replace('<svg ', '<svg shape-rendering="crispEdges" ')
   : '')
 
 const { label: remaining, expired } = useCountdown(() => run.value?.endsAt, () => run.value?.serverNow)
@@ -109,7 +110,7 @@ const signOpen = computed(() => !!run.value?.signUntil && new Date(run.value.sig
       <div class="shrink-0 flex flex-col items-center gap-3">
         <!-- eslint-disable vue/no-v-html -- QR SVG generated locally from our own URL -->
         <div
-          class="size-[min(70vw,24rem)] lg:size-[min(60vh,26rem)] rounded-2xl bg-white p-3 [&>svg]:size-full"
+          class="size-[min(70vw,24rem)] lg:size-[min(60vh,26rem)] rounded-xl overflow-hidden bg-white shadow-lg [&>svg]:size-full"
           v-html="qrSvg"
         />
         <!-- eslint-enable vue/no-v-html -->

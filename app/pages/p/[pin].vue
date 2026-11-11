@@ -94,6 +94,7 @@ async function load() {
       name.value = stored.name ?? ''
       answers.value = sanitizeAnswers(run.value.content.blocks, stored.answers)
     }
+    sendHeartbeat()
   }
 }
 
@@ -115,7 +116,8 @@ const endedByTeacher = ref(false)
 const serverSignUntil = ref<Date | null>(null)
 let heartbeat: ReturnType<typeof setInterval> | undefined
 async function sendHeartbeat() {
-  if (!run.value || offline.value || endedByTeacher.value) return
+  // Also in the cached (offline) view: after a reload past the end, this is how the page learns it ended
+  if (!run.value || endedByTeacher.value) return
   try {
     const res = await $fetch<{ status: 'waiting' | 'running' | 'ended', signUntil: string | null }>('/api/presence', {
       method: 'POST',
@@ -131,7 +133,8 @@ async function sendHeartbeat() {
 
 onMounted(() => {
   load()
-  heartbeat = setInterval(sendHeartbeat, 20_000)
+  // 10 s: a manual end shows up quickly; ~3 requests/s for a class of 30 is negligible
+  heartbeat = setInterval(sendHeartbeat, 10_000)
 })
 onBeforeUnmount(() => clearInterval(heartbeat))
 
@@ -225,14 +228,14 @@ async function exportPdf() {
           {{ run?.content.title ?? 'Prüfung' }}
         </p>
         <UBadge
-          v-if="remaining !== null"
-          :color="expired ? 'error' : lowTime ? 'warning' : 'neutral'"
+          v-if="endedByTeacher || remaining !== null"
+          :color="endedByTeacher || expired ? 'error' : lowTime ? 'warning' : 'neutral'"
           variant="subtle"
           size="lg"
-          icon="i-lucide-timer"
+          :icon="endedByTeacher || expired ? 'i-lucide-timer-off' : 'i-lucide-timer'"
           class="tabular-nums shrink-0"
         >
-          {{ expired ? 'Zeit abgelaufen' : remaining }}
+          {{ endedByTeacher && !expired ? 'Beendet' : expired ? 'Zeit abgelaufen' : remaining }}
         </UBadge>
         <UButton
           v-if="run"
@@ -295,7 +298,7 @@ async function exportPdf() {
 
       <template v-else-if="run">
         <UAlert
-          v-if="offline"
+          v-if="offline && !endedByTeacher"
           icon="i-lucide-wifi-off"
           color="warning"
           variant="subtle"
