@@ -80,19 +80,13 @@ const { user } = useUserSession()
               <UIcon
                 name="i-lucide-list-checks"
                 class="size-4 mt-0.5 shrink-0"
-              />Prüfungen lesen (auch die deiner Kolleginnen und Kollegen)
+              />deine und mit dir geteilte Prüfungen lesen, inklusive Musterlösungen
             </li>
             <li class="flex gap-2">
               <UIcon
                 name="i-lucide-pencil-line"
                 class="size-4 mt-0.5 shrink-0"
-              />deine Prüfungen erstellen und ändern (immer als Entwurf, den du freigibst)
-            </li>
-            <li class="flex gap-2">
-              <UIcon
-                name="i-lucide-chart-column"
-                class="size-4 mt-0.5 shrink-0"
-              />anonyme Ergebnisse deiner gespielten Runden lesen
+              />Prüfungen erstellen und ändern (immer als Entwurf, den du freigibst)
             </li>
           </ul>
         </div>
