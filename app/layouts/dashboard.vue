@@ -4,7 +4,8 @@ import type { DropdownMenuItem, NavigationMenuItem } from '@nuxt/ui'
 const { user, clear } = useUserSession()
 
 const links = computed<NavigationMenuItem[]>(() => [
-  { label: 'Prüfungen', icon: 'i-lucide-list-checks', to: '/exams' },
+  { label: 'Prüfungen', icon: 'i-lucide-file-pen-line', to: '/exams' },
+  { label: 'PDF prüfen', icon: 'i-lucide-shield-check', to: '/verify' },
   ...(user.value?.isAdmin ? [{ label: 'Benutzer', icon: 'i-lucide-users', to: '/admin/users' }] : []),
   { label: 'Einstellungen', icon: 'i-lucide-settings', to: '/settings' },
 ])
