@@ -110,6 +110,8 @@ test/               Vitest unit tests (pure logic, no Nuxt context)
 - Nitro tree-shakes top-level side effects in our own modules. Global setup (e.g. `z.config(...)`) must run from
   a plugin (`server/plugins/zod-locale.ts` + `app/plugins/zod-locale.ts` + `test/setup.ts`).
 - Nuxt UI inputs accept `undefined`, not `null`. For nullable fields bind `:model-value="x ?? undefined"`.
+- Nuxt UI centers modals with `translate(-50%, -50%)`; odd heights land on half pixels and text gets blurry in
+  Chrome. `app.config.ts` overrides this with `inset-0 m-auto h-fit` (no transform). Keep it when upgrading.
 - `USelect` items must not use `''` as value (Reka throws); use a sentinel like `'__none__'`.
 - In `<script setup>`, `useHead({ title: () => state.value… })` must come after `state` is declared,
   otherwise SSR fails with "Cannot access 'state' before initialization".
