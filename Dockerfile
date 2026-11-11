@@ -19,7 +19,7 @@ ENV NODE_ENV=production \
 
 COPY --from=build /app/.output ./.output
 COPY --from=build /app/server/db/migrations ./server/db/migrations
-COPY --from=build /app/scripts/backup.mjs ./scripts/backup.mjs
+COPY --from=build /app/scripts/backup.mjs /app/scripts/keygen.mjs ./scripts/
 
 RUN mkdir -p /data && chown node:node /data
 VOLUME /data

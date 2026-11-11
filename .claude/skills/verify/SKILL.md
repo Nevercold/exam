@@ -37,7 +37,7 @@ Add the endpoints of the feature you're working on. Delete cookie jars and `data
 
 ## 4. Production build
 
-Run this when changing the build, dependencies or anything native (libsql, sharp):
+Run this when changing the build, dependencies or anything native (libsql):
 
 ```bash
 pnpm build

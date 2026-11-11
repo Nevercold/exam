@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "pnpm@12.18.0",
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "scripts": {
     "dev": "nuxt dev",
@@ -17,7 +17,6 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
-    "db:check": "drizzle-kit check && drizzle-kit generate && git diff --exit-code -- server/db/migrations && test -z \"$(git status --porcelain -- server/db/migrations)\"",
     "keygen": "node scripts/keygen.mjs"
   },
   "dependencies": {

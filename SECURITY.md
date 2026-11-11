@@ -4,7 +4,7 @@
 
 Please **do not open public issues** for security vulnerabilities.
 Report them privately via
-[GitHub Private Vulnerability Reporting](https://github.com/Nevercold/learn/security/advisories/new).
+[GitHub Private Vulnerability Reporting](https://github.com/Nevercold/exam/security/advisories/new).
 
 Helpful details:
 
@@ -23,4 +23,4 @@ Security fixes are provided for the latest state of `main` / the latest release 
 - `NUXT_APP_SECRET` must be long and random (`openssl rand -base64 32`) and must never be exposed.
 - After the first start, remove `NUXT_ADMIN_PASSWORD` from `.env` and change the password in the app.
 - Only run behind HTTPS (e.g. with the included Caddy setup).
-- Back up the `/data` volume (SQLite + uploads) regularly.
+- Back up the `/data` volume (SQLite) regularly, and keep a copy of `NUXT_SIGNING_PRIVATE_KEY` outside the server: without it, signed PDFs can no longer be verified.

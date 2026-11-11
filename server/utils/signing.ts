@@ -20,7 +20,7 @@ export function loadSigningKeys(config: { signingPrivateKey: string, signingKeyI
     privateKey = generateKeyPairSync('ed25519').privateKey
   }
   else {
-    throw new Error('NUXT_SIGNING_PRIVATE_KEY is not set (generate one with `pnpm keygen`)')
+    throw new Error('NUXT_SIGNING_PRIVATE_KEY is not set (generate one with `node scripts/keygen.mjs`, see docs/deployment.md)')
   }
 
   const publicKeys = new Map<string, KeyObject>([[config.signingKeyId, createPublicKey(privateKey)]])
@@ -33,7 +33,7 @@ export function loadSigningKeys(config: { signingPrivateKey: string, signingKeyI
   return { kid: config.signingKeyId, privateKey, publicKeys }
 }
 
-function useSigningKeys(): Keys {
+export function useSigningKeys(): Keys {
   keys ??= loadSigningKeys(useRuntimeConfig())
   return keys
 }

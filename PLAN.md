@@ -138,16 +138,23 @@ Each phase ends with green `lint`, `typecheck`, `test`, a commit (and push once 
    check), Dockerfile. Domain model (`shared/utils/exam.ts`), hints, signing utils + tests.
 2. **Accounts** ✅ — taken over from Quizzle: admin seed from env, invite links, login/logout, admin user
    list, deactivate, rate limits, API tokens, OAuth 2.1 authorization server.
-3. **Blocks and editor** — block registry, four MVP blocks (editor, input, view, hints, pdf),
-   exam list/editor with draft/release, sharing, copy, normalization template + checks.
-4. **Runs and student view** — start with/without timer, end manually, projector view (PIN, QR,
-   countdown), student page at 360 px, hints, autosave, solution-stripping tests.
-5. **PDF and signing** — canonical JSON, sign endpoint, PDF rendering with attachment, unsigned mark.
-6. **Verification** — upload one PDF, signature check, side-by-side with the solution.
-7. **MCP** — `/mcp` (Streamable HTTP, auth from phase 2), resource `exam://schema`, tools:
+3. **Blocks and editor** ✅ — four MVP blocks, exam list/editor with draft/release, sharing, copy,
+   archive, student preview, normalization template + checks, paste tables from spreadsheets.
+4. **Runs and student view** ✅ — start with/without timer, end manually, projector view (PIN, QR,
+   countdown), student page at 360 px, hints, autosave, offline fallback (cached exam, unsigned export).
+5. **PDF and signing** ✅ — canonical JSON, sign endpoint, PDF in the browser (landscape for wide tables),
+   submission embedded in the PDF info dictionary, "NICHT SIGNIERT" watermark.
+6. **Verification** ✅ — upload one PDF, signature/hash/run-window check, side-by-side with the solution.
+7. **MCP** ✅ — `/mcp` (Streamable HTTP, auth from phase 2), resource `exam://schema`, tools:
    `list_exams`, `get_exam`, `validate_exam`, `create_exam`, `update_exam` (all writes → draft).
-8. **Operations** — Caddy variant, backup script (SQLite online backup) in the image, healthcheck,
-   load test bot script (students joining and signing), `docs/deployment.md`.
+8. **Operations** ✅ — Docker (Caddy or own proxy), backup + keygen scripts in the image, healthcheck,
+   startup check for the signing key, load test script, `docs/deployment.md`.
+
+## Ideas (not planned yet)
+
+- More block types: `choice` (single/multiple choice), `sql` (query answer), ER diagrams (Chen).
+- "Extend timer" button on the projector view.
+- Automatic comparison hints on the verification page (currently manual grading by design).
 
 ## Further defaults (confirmed)
 

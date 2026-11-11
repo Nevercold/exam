@@ -1,5 +1,5 @@
 # App only, without Caddy: for running behind your own reverse proxy (nginx, Traefik, NPM, …)
-# that terminates TLS. The proxy must forward WebSockets (path /_ws) and the Host / X-Forwarded-* headers.
+# that terminates TLS. The proxy must forward the Host / X-Forwarded-* headers.
 # Start: cp .env.example .env && (fill in values) && docker compose -f docker-compose.standalone.yml up -d
 services:
   app:

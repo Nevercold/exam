@@ -9,7 +9,24 @@ student exports a **signed PDF** and uploads it to the school cloud themselves.
 - **Normalization template** (1NF → 2NF → 3NF) for Lernfeld 8.2, other exams via the generic block editor.
 - **MCP server** with OAuth 2.1: let an AI assistant draft exams, the teacher reviews and releases them.
 
-Self-hosted with Docker (SQLite, single container, optional Caddy). See [`docs/deployment.md`](docs/deployment.md),
-development guide in [`AGENTS.md`](AGENTS.md), plan in [`PLAN.md`](PLAN.md).
+## Self-hosting (Docker)
+
+```bash
+cp .env.example .env            # fill in secret, admin account and domain
+docker run --rm ghcr.io/nevercold/exam:latest node scripts/keygen.mjs >> .env
+docker compose up -d            # with Caddy (HTTPS); or -f docker-compose.standalone.yml behind your own proxy
+```
+
+Details (sizing, proxy, backups, key rotation): [`docs/deployment.md`](docs/deployment.md).
+
+## Development
+
+```bash
+pnpm install
+cp .env.example .env            # NUXT_APP_SECRET + admin account; without a signing key dev uses a temporary one
+pnpm dev
+```
+
+Guide for contributors and AI agents: [`AGENTS.md`](AGENTS.md), plan and decisions: [`PLAN.md`](PLAN.md).
 
 License: MIT
