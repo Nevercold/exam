@@ -9,7 +9,9 @@ const earlierSchemaBlocks = computed(() => props.blocks.slice(0, props.index)
   .filter(b => b.type === 'schema-answer')
   .map(b => ({ label: b.label || b.id, value: b.id })))
 
-const copyFromItems = computed(() => [{ label: 'Keine Übernahme', value: '' }, ...earlierSchemaBlocks.value])
+// Reka's Select doesn't allow an empty string as item value
+const NONE = '__none__'
+const copyFromItems = computed(() => [{ label: 'Keine Übernahme', value: NONE }, ...earlierSchemaBlocks.value])
 
 function copySolutionFromSource() {
   if (block.value.type !== 'schema-answer' || !block.value.copyFrom) return
@@ -82,11 +84,11 @@ function copySolutionFromSource() {
           help="Schüler können die Tabellen aus diesem Block übernehmen"
         >
           <USelect
-            :model-value="block.copyFrom ?? ''"
+            :model-value="block.copyFrom ?? NONE"
             :items="copyFromItems"
             :disabled="disabled || earlierSchemaBlocks.length === 0"
             class="w-full"
-            @update:model-value="(block as { copyFrom: string | null }).copyFrom = ($event as string) || null"
+            @update:model-value="(block as { copyFrom: string | null }).copyFrom = $event === NONE ? null : $event as string"
           />
         </UFormField>
       </div>

@@ -13,8 +13,6 @@ type ExamDetail = ExamSummary & { isOwner: boolean, draft: ExamContent, warnings
 const { data, error } = await useFetch<ExamDetail>(`/api/exams/${id}`, { key: `exam-${id}` })
 if (error.value) throw createError({ statusCode: error.value.statusCode ?? 404, statusMessage: 'Prüfung nicht gefunden', fatal: true })
 
-useHead({ title: () => `${state.value.title || 'Prüfung'} · exam` })
-
 const meta = ref({
   released: data.value!.released,
   unreleasedChanges: data.value!.unreleasedChanges,
@@ -23,6 +21,7 @@ const meta = ref({
 })
 const readonly = computed(() => data.value!.archived)
 const state = ref<ExamContent>(structuredClone(toRaw(data.value!.draft)))
+useHead({ title: () => `${state.value.title || 'Prüfung'} · exam` })
 const saved = ref(JSON.stringify(state.value))
 const dirty = computed(() => JSON.stringify(state.value) !== saved.value)
 const warnings = computed(() => examWarnings(state.value))
