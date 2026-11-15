@@ -2,7 +2,7 @@
 // Builds relational tables: name, columns with PK/FK, data rows.
 // Used by students (answers) and teachers (solutions). Scrolls horizontally on small screens.
 const tables = defineModel<SchemaTable[]>({ required: true })
-defineProps<{ disabled?: boolean }>()
+defineProps<{ disabled?: boolean, askCardinality?: boolean }>()
 
 function addTable() {
   tables.value.push({ name: '', columns: [{ name: '', pk: true, fk: null }], rows: [['']] })
@@ -57,7 +57,15 @@ function setFkTable(c: SchemaColumn, table: string) {
   const cols = columnsOf(table)
   // Pre-select the column with the same name, the common case (KundenNr → Kunde.KundenNr)
   const same = cols.find(n => n.toLowerCase() === c.name.trim().toLowerCase())
-  c.fk = { table, column: same ?? cols[0] ?? '' }
+  const cardinality = c.fk?.cardinality
+  c.fk = { table, column: same ?? cols[0] ?? '', ...(cardinality ? { cardinality } : {}) }
+}
+
+// Labels name the actual tables, so the direction is unambiguous: "Abteilung 1 : n Bestellung"
+function cardinalityItems(t: SchemaTable, c: SchemaColumn) {
+  const parent = c.fk?.table || '?'
+  const child = t.name.trim() || 'diese Tabelle'
+  return CARDINALITIES.map(value => ({ value, label: `${parent} ${value.replace(':', ' : ')} ${child}` }))
 }
 
 function toggleFk(c: SchemaColumn) {
@@ -154,7 +162,7 @@ function toggleFk(c: SchemaColumn) {
                         FK
                       </UButton>
                       <template #content>
-                        <div class="p-3 flex flex-col gap-2 w-64">
+                        <div class="p-3 flex flex-col gap-2 w-72 max-w-[calc(100vw-2rem)]">
                           <p class="text-sm font-medium">
                             Fremdschlüssel „{{ c.name || '?' }}“
                           </p>
@@ -172,6 +180,19 @@ function toggleFk(c: SchemaColumn) {
                               :disabled="!c.fk.table"
                               @update:model-value="c.fk!.column = $event as string"
                             />
+                            <template v-if="askCardinality">
+                              <USelect
+                                :model-value="c.fk.cardinality"
+                                :items="cardinalityItems(t, c)"
+                                placeholder="Kardinalität"
+                                :disabled="!c.fk.table"
+                                aria-label="Kardinalität"
+                                @update:model-value="c.fk!.cardinality = $event as Cardinality"
+                              />
+                              <p class="text-xs text-muted">
+                                1 : n heißt: Zu einem Datensatz in „{{ c.fk.table || '?' }}“ gehören beliebig viele in „{{ t.name.trim() || 'dieser Tabelle' }}“.
+                              </p>
+                            </template>
                           </template>
                           <UButton
                             size="sm"
@@ -189,7 +210,7 @@ function toggleFk(c: SchemaColumn) {
                       v-if="c.fk?.table"
                       class="text-xs text-info truncate max-w-24"
                       :title="`${c.fk.table}.${c.fk.column}`"
-                    >→ {{ c.fk.table }}</span>
+                    >→ {{ c.fk.table }}<template v-if="askCardinality"> ({{ c.fk.cardinality ?? '?' }})</template></span>
                     <span class="flex-1" />
                     <UDropdownMenu
                       v-if="!disabled"

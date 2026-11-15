@@ -169,12 +169,28 @@ const nameTouched = ref(false)
 const exporting = ref(false)
 const lastExport = ref<{ signed: boolean, at: Date, code: string } | null>(null)
 
-async function exportPdf() {
+// FKs without cardinality in blocks that ask for it: warn before exporting, never block (time may be up)
+const missingCardinalities = computed(() => (run.value?.content.blocks ?? []).flatMap((b) => {
+  if (b.type !== 'schema-answer' || !b.askCardinality) return []
+  const tables = answers.value[b.id]
+  if (!Array.isArray(tables)) return []
+  return tables.flatMap(t => t.columns
+    .filter(c => c.fk && !c.fk.cardinality)
+    .map(c => `${b.label || 'Tabellen'}: ${t.name.trim() || '?'}.${c.name.trim() || '?'} → ${c.fk!.table || '?'}`))
+}))
+const confirmMissing = ref(false)
+
+async function exportPdf(force = false) {
   nameTouched.value = true
   if (!run.value || nameError.value) {
     document.getElementById('student-name')?.focus()
     return
   }
+  if (!force && missingCardinalities.value.length) {
+    confirmMissing.value = true
+    return
+  }
+  confirmMissing.value = false
   exporting.value = true
   try {
     const submission: Submission = {
@@ -242,7 +258,7 @@ async function exportPdf() {
           icon="i-lucide-file-down"
           :loading="exporting"
           class="shrink-0"
-          @click="exportPdf"
+          @click="exportPdf()"
         >
           <span class="hidden sm:inline">PDF exportieren</span>
         </UButton>
@@ -358,7 +374,7 @@ async function exportPdf() {
               size="xl"
               block
               :loading="exporting"
-              @click="exportPdf"
+              @click="exportPdf()"
             >
               PDF exportieren
             </UButton>
@@ -380,5 +396,40 @@ async function exportPdf() {
         </UCard>
       </template>
     </main>
+
+    <UModal
+      v-model:open="confirmMissing"
+      title="Kardinalitäten fehlen"
+      description="Bei diesen Fremdschlüsseln fehlt noch die Angabe 1:1 oder 1:n. Du kannst sie ergänzen oder trotzdem exportieren."
+    >
+      <template #body>
+        <ul class="text-sm flex flex-col gap-1 list-disc pl-5">
+          <li
+            v-for="(m, i) in missingCardinalities"
+            :key="i"
+          >
+            {{ m }}
+          </li>
+        </ul>
+      </template>
+      <template #footer>
+        <div class="flex flex-wrap justify-end gap-2 w-full">
+          <UButton
+            color="neutral"
+            variant="ghost"
+            @click="confirmMissing = false"
+          >
+            Ergänzen
+          </UButton>
+          <UButton
+            color="warning"
+            icon="i-lucide-file-down"
+            @click="exportPdf(true)"
+          >
+            Trotzdem exportieren
+          </UButton>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>

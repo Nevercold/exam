@@ -43,6 +43,29 @@ describe('buildDocDefinition', () => {
   })
 })
 
+describe('relational model in the PDF', () => {
+  const tables = [
+    { name: 'Kunde', columns: [{ name: 'KundeNr', pk: true, fk: null }], rows: [['K1']] },
+    { name: 'Auftrag', columns: [{ name: 'AuftragNr', pk: true, fk: null }, { name: 'KundeNr', pk: false, fk: { table: 'Kunde', column: 'KundeNr', cardinality: '1:n' as const } }], rows: [['A1', 'K1']] },
+  ]
+  const build = (askCardinality: boolean) => JSON.stringify(buildDocDefinition({
+    content: toStudentContent(examContentSchema.parse({ title: 'T', blocks: [{ id: 's', type: 'schema-answer', askCardinality }] })),
+    submission: { ...submission, answers: { s: tables } },
+    envelope,
+    hash: 'a'.repeat(64),
+  }))
+
+  it('adds diagram and relationship list when cardinalities are asked', () => {
+    const json = build(true)
+    expect(json).toContain('<svg')
+    expect(json).toContain('Kunde 1 : n Auftrag (über Auftrag.KundeNr)')
+  })
+
+  it('stays as before otherwise', () => {
+    expect(build(false)).not.toContain('<svg')
+  })
+})
+
 describe('pdfFilename', () => {
   it('is safe for uploads', () => {
     expect(pdfFilename('Normalisierung: Werkstatt', 'Jörg Groß')).toBe('Normalisierung_Werkstatt_Joerg_Gross.pdf')

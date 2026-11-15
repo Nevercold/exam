@@ -1,5 +1,6 @@
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces'
 import type { SchemaTable, StudentContent } from '../../shared/utils/exam'
+import { diagramLayout, diagramSvg, relationships, relationshipText } from '../../shared/utils/relations'
 import { embeddedSubmissionSchema, PDF_INFO_KEY, verificationCode, type EmbeddedSubmission, type SignedEnvelope, type Submission } from '../../shared/utils/submission'
 
 // Builds the student's PDF in the browser. pdfmake and pdf-lib are loaded lazily (large bundles,
@@ -32,7 +33,7 @@ function schemaTablesContent(tables: SchemaTable[]): Content[] {
                       { text: c.name || '?', bold: true, decoration: c.pk ? 'underline' as const : undefined },
                       ...(c.pk ? [{ text: 'PK', fontSize: 7, color: '#047857' }] : []),
                       // Roboto has no arrow glyph
-                      ...(c.fk ? [{ text: `FK: ${c.fk.table}.${c.fk.column}`, fontSize: 7, color: '#0369a1' }] : []),
+                      ...(c.fk ? [{ text: `FK: ${c.fk.table}.${c.fk.column}${c.fk.cardinality ? ` (${c.fk.cardinality})` : ''}`, fontSize: 7, color: '#0369a1' }] : []),
                     ],
                     fillColor: '#f4f4f5',
                   })),
@@ -46,6 +47,20 @@ function schemaTablesContent(tables: SchemaTable[]): Content[] {
       unbreakable: t.rows.length < 15,
     }
   })
+}
+
+// Diagram (fits a portrait page) plus the relationships as text, which stays readable when the diagram gets dense
+function relationalModelContent(tables: SchemaTable[]): Content[] {
+  const layout = diagramLayout(tables)
+  const rels = relationships(tables)
+  return [
+    { text: 'Relationenmodell', bold: true, margin: [0, 10, 0, 4] },
+    { svg: diagramSvg(layout), fit: [500, 600] },
+    { text: 'Beziehungen', bold: true, margin: [0, 8, 0, 2] },
+    rels.length
+      ? { ul: rels.map(r => ({ text: relationshipText(r), color: r.cardinality ? undefined : '#b45309' })) }
+      : { text: 'Keine Fremdschlüssel, daher keine Beziehungen', italics: true, color: '#71717a' },
+  ]
 }
 
 export function buildDocDefinition(opts: {
@@ -78,11 +93,13 @@ export function buildDocDefinition(opts: {
 
   for (const block of content.blocks) {
     if (block.type === 'schema-answer') {
-      const tables = submission.answers[block.id]
+      const raw = submission.answers[block.id]
+      const tables = Array.isArray(raw) ? raw as SchemaTable[] : []
       body.push(
         { text: block.label || 'Tabellen', style: 'heading', headlineLevel: 1 },
-        ...schemaTablesContent(Array.isArray(tables) ? tables as SchemaTable[] : []),
+        ...schemaTablesContent(tables),
       )
+      if (block.askCardinality && tables.length) body.push(...relationalModelContent(tables))
     }
     else if (block.type === 'freetext') {
       const text = submission.answers[block.id]

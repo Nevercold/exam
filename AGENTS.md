@@ -60,6 +60,7 @@ server/
                     invites, api-tokens, oauth, crypto, safe-fetch
   plugins/          db (migrations), zod-locale, session-check, oauth-cleanup
 shared/utils/       exam.ts (block model, student view, templates, warnings), hints.ts (formal hints),
+                    relations.ts (relationships from FKs, diagram layout/SVG, comparison with the solution),
                     submission.ts (canonical JSON, hash, signature types), schemas.ts (auth/users)
 scripts/            backup.mjs (online SQLite backup), keygen.mjs, load-test.mjs
 docs/               deployment.md
@@ -131,5 +132,12 @@ test/               Vitest unit tests (pure logic, no Nuxt context)
 - drizzle-kit generates libSQL-only `ALTER COLUMN` for nullability changes and `NOT NULL` columns without
   defaults; rewrite such migrations as a portable table rebuild before committing (see `0001_run_lobby.sql`).
 - Screenshots of a background tab can be taken before hydration: wait or re-take before judging the UI.
+- New fields in the block or answer model must be `.optional()` without `.default()`: a default adds keys when
+  old data is parsed, which changes released snapshots and makes stored data differ from what was hashed. Old
+  answers must parse to exactly the same JSON (test in `test/relations.test.ts`).
+- `@click="fn"` passes the event as first argument; for functions with an optional parameter (`exportPdf(force)`)
+  write `@click="fn()"`.
+- The relational diagram is plain SVG from `diagramLayout()`: the Vue template renders it in the browser (escaped),
+  `diagramSvg()` escapes for pdfmake's `svg` node. Never `v-html` the SVG string, it contains student input.
 - Without `NUXT_SIGNING_PRIVATE_KEY` the dev server uses an ephemeral key (PDFs unverifiable after restart);
   production refuses to sign.

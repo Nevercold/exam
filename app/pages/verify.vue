@@ -101,6 +101,7 @@ const rows = computed(() => {
       label: (b as { label: string }).label || b.id,
       answer: answers[b.id],
       solution: (b as { solution: unknown }).solution,
+      askCardinality: b.type === 'schema-answer' && !!b.askCardinality,
     }))
   }
   // No access or unsigned: show answers only (structure from the submission itself)
@@ -110,10 +111,21 @@ const rows = computed(() => {
     label: id,
     answer,
     solution: undefined,
+    askCardinality: asTables(answer).some(t => t.columns.some(c => c.fk?.cardinality)),
   }))
 })
 
-const asTables = (v: unknown) => schemaTablesSchema.safeParse(v).data ?? []
+function asTables(v: unknown) {
+  return schemaTablesSchema.safeParse(v).data ?? []
+}
+
+// Informational comparison of relationships; grading stays with the teacher
+function comparison(row: { answer: unknown, solution: unknown }) {
+  const solution = asTables(row.solution)
+  return solution.length ? compareRelationships(asTables(row.answer), solution) : []
+}
+const FINDING_ICONS = { ok: 'i-lucide-check', error: 'i-lucide-x', info: 'i-lucide-info' } as const
+const FINDING_COLORS = { ok: 'text-success', error: 'text-error', info: 'text-info' } as const
 const asText = (v: unknown) => (typeof v === 'string' ? v : '')
 </script>
 
@@ -242,10 +254,13 @@ const asText = (v: unknown) => (typeof v === 'string' ? v : '')
                 <p class="text-xs uppercase tracking-wide text-muted">
                   Antwort
                 </p>
-                <BlocksSchemaTablesView
-                  v-if="row.type === 'schema-answer'"
-                  :tables="asTables(row.answer)"
-                />
+                <template v-if="row.type === 'schema-answer'">
+                  <BlocksSchemaTablesView :tables="asTables(row.answer)" />
+                  <BlocksRelationDiagram
+                    v-if="row.askCardinality && asTables(row.answer).length"
+                    :tables="asTables(row.answer)"
+                  />
+                </template>
                 <p
                   v-else
                   class="whitespace-pre-wrap"
@@ -267,10 +282,13 @@ const asText = (v: unknown) => (typeof v === 'string' ? v : '')
                 >
                   Keine Musterlösung hinterlegt
                 </p>
-                <BlocksSchemaTablesView
-                  v-else-if="row.type === 'schema-answer'"
-                  :tables="asTables(row.solution)"
-                />
+                <template v-else-if="row.type === 'schema-answer'">
+                  <BlocksSchemaTablesView :tables="asTables(row.solution)" />
+                  <BlocksRelationDiagram
+                    v-if="row.askCardinality && asTables(row.solution).length"
+                    :tables="asTables(row.solution)"
+                  />
+                </template>
                 <p
                   v-else
                   class="whitespace-pre-wrap"
@@ -278,6 +296,29 @@ const asText = (v: unknown) => (typeof v === 'string' ? v : '')
                   {{ asText(row.solution) }}
                 </p>
               </div>
+            </div>
+            <div
+              v-if="row.type === 'schema-answer' && row.askCardinality && comparison(row).length"
+              class="rounded-lg border border-default p-3 text-sm flex flex-col gap-1"
+            >
+              <p class="font-medium">
+                Beziehungen im Vergleich zur Musterlösung
+              </p>
+              <p class="text-xs text-muted mb-1">
+                Tabellen werden über Namen oder Spalten zugeordnet. Nur ein Hinweis, die Bewertung liegt bei dir.
+              </p>
+              <p
+                v-for="(f, i) in comparison(row)"
+                :key="i"
+                class="flex gap-2"
+              >
+                <UIcon
+                  :name="FINDING_ICONS[f.severity]"
+                  class="size-4 shrink-0 mt-0.5"
+                  :class="FINDING_COLORS[f.severity]"
+                />
+                {{ f.message }}
+              </p>
             </div>
           </section>
         </template>

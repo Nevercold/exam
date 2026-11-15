@@ -1,4 +1,5 @@
-import type { SchemaTable } from './exam'
+import type { SchemaColumn, SchemaTable } from './exam'
+import { fkProblem } from './relations'
 
 // Formal hints shown to students while they work. They must never judge the content
 // (that would reveal the solution), only structural problems like missing keys.
@@ -7,7 +8,7 @@ export type Hint = { table?: number, message: string }
 
 const norm = (s: string) => s.trim().toLowerCase()
 
-export function schemaHints(tables: SchemaTable[]): Hint[] {
+export function schemaHints(tables: SchemaTable[], options: { askCardinality?: boolean } = {}): Hint[] {
   const hints: Hint[] = []
   if (tables.length === 0) return [{ message: 'Noch keine Tabelle angelegt' }]
 
@@ -52,19 +53,22 @@ export function schemaHints(tables: SchemaTable[]): Hint[] {
     const label = t.name.trim() ? `Tabelle „${t.name.trim()}“` : `Tabelle ${i + 1}`
     for (const c of t.columns) {
       if (!c.fk) continue
-      const target = names.get(norm(c.fk.table))
-      const col = c.name.trim() || '?'
-      if (!c.fk.table.trim() || !c.fk.column.trim()) {
-        hints.push({ table: i, message: `${label}: Fremdschlüssel „${col}“ hat kein Ziel` })
-      }
-      else if (!target) {
-        hints.push({ table: i, message: `${label}: Fremdschlüssel „${col}“ verweist auf unbekannte Tabelle „${c.fk.table}“` })
-      }
-      else if (!target.columns.some(tc => norm(tc.name) === norm(c.fk!.column))) {
-        hints.push({ table: i, message: `${label}: Fremdschlüssel „${col}“ verweist auf unbekannte Spalte „${c.fk.table}.${c.fk.column}“` })
-      }
+      const message = fkMessage(tables, c.name, c.fk, options.askCardinality)
+      if (message) hints.push({ table: i, message: `${label}: ${message}` })
     }
   })
 
   return hints
+}
+
+/** Problem of one foreign key as a sentence ("Fremdschlüssel „X“ …"), or null. Also used for solution warnings. */
+export function fkMessage(tables: SchemaTable[], column: string, fk: NonNullable<SchemaColumn['fk']>, askCardinality = false): string | null {
+  const col = `Fremdschlüssel „${column.trim() || '?'}“`
+  switch (fkProblem(tables, fk)) {
+    case 'no-target': return `${col} hat kein Ziel`
+    case 'unknown-table': return `${col} verweist auf unbekannte Tabelle „${fk.table}“`
+    case 'unknown-column': return `${col} verweist auf unbekannte Spalte „${fk.table}.${fk.column}“`
+    case 'not-pk': return `${col} verweist nicht auf den Primärschlüssel von „${fk.table}“`
+  }
+  return askCardinality && !fk.cardinality ? `${col}: Kardinalität (1:1 oder 1:n) fehlt` : null
 }

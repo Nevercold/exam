@@ -17,7 +17,8 @@ if (props.block.type === 'schema-answer' && !Array.isArray(answers.value[props.b
   answers.value[props.block.id] = []
 }
 
-const hints = computed(() => props.block.type === 'schema-answer' ? schemaHints(tables.value) : [])
+const askCardinality = computed(() => props.block.type === 'schema-answer' && !!props.block.askCardinality)
+const hints = computed(() => props.block.type === 'schema-answer' ? schemaHints(tables.value, { askCardinality: askCardinality.value }) : [])
 
 const source = computed(() => {
   if (props.block.type !== 'schema-answer' || !props.block.copyFrom) return null
@@ -29,7 +30,7 @@ const confirmCopy = ref(false)
 function copyFromSource() {
   if (!source.value) return
   const from = answers.value[source.value.id]
-  tables.value = Array.isArray(from) ? structuredClone(toRaw(from)) : []
+  tables.value = Array.isArray(from) ? copySchemaTables(toRaw(from)) : []
   confirmCopy.value = false
 }
 function requestCopy() {
@@ -83,6 +84,11 @@ const maxLength = computed(() => (props.block.type === 'freetext' ? props.block.
       <BlocksSchemaTablesInput
         v-model="tables"
         :disabled="disabled"
+        :ask-cardinality="askCardinality"
+      />
+      <BlocksRelationDiagram
+        v-if="askCardinality && tables.length"
+        :tables="tables"
       />
       <ul
         v-if="hints.length && !disabled"

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { fkMessage } from './hints'
 
 // Exam content model: an exam is a list of blocks. Used by the editor, the API, the MCP server,
 // the student view (via toStudentContent) and the PDF.
@@ -32,10 +33,20 @@ export const givenTableSchema = z.object({
   rows: z.array(z.array(cell)).max(LIMITS.rows),
 }).refine(rowsMatchColumns, rowsMatchColumnsError)
 
+/** Cardinality of the relationship a foreign key creates, seen from the referenced table ("Abteilung 1:n Bestellung"). */
+export const CARDINALITIES = ['1:1', '1:n'] as const
+
+export type Cardinality = (typeof CARDINALITIES)[number]
+
 export const schemaColumnSchema = z.object({
   name: z.string().max(100),
   pk: z.boolean().default(false),
-  fk: z.object({ table: z.string().max(100), column: z.string().max(100) }).nullable().default(null),
+  fk: z.object({
+    table: z.string().max(100),
+    column: z.string().max(100),
+    // Optional without default: parsing old answers must not add keys (submission hashes, released snapshots)
+    cardinality: z.enum(CARDINALITIES).optional(),
+  }).nullable().default(null),
 })
 
 /** A relational table as built by students (and in solutions): name, keys, data. */
@@ -66,6 +77,8 @@ export const schemaAnswerBlockSchema = z.object({
   label: label.default(''),
   // Offers "Tabellen aus vorherigem Schritt übernehmen" from this earlier schema-answer block
   copyFrom: blockId.nullable().default(null),
+  // Students must give a cardinality for every FK; shows the relational diagram. Optional for the same reason as above.
+  askCardinality: z.boolean().optional(),
   solution: schemaTablesSchema.nullable().default(null),
 })
 
@@ -116,7 +129,7 @@ export type SchemaTable = z.output<typeof schemaTableSchema>
 const studentBlockSchema = z.discriminatedUnion('type', [
   textBlockSchema,
   tableBlockSchema,
-  schemaAnswerBlockSchema.pick({ id: true, type: true, label: true, copyFrom: true }),
+  schemaAnswerBlockSchema.pick({ id: true, type: true, label: true, copyFrom: true, askCardinality: true }),
   freetextBlockSchema.pick({ id: true, type: true, label: true, maxLength: true }),
 ])
 
@@ -158,6 +171,11 @@ export function sanitizeAnswers(blocks: StudentBlock[], raw: unknown): Answers {
 }
 
 // ---------- Helpers ----------
+
+/** "Tabellen aus vorherigem Schritt übernehmen": a deep copy incl. keys and cardinalities. Pass raw (non-proxy) data. */
+export function copySchemaTables(tables: SchemaTable[]): SchemaTable[] {
+  return structuredClone(tables)
+}
 
 export function newBlockId(existing: { id: string }[]): string {
   const ids = new Set(existing.map(b => b.id))
@@ -202,7 +220,15 @@ export function templateContent(template: (typeof EXAM_TEMPLATES)[number], title
     const key = nf.toLowerCase()
     blocks.push(
       { id: `${key}-task`, type: 'text', markdown: `## ${nf}\n\n${text}` },
-      { id: `${key}-tables`, type: 'schema-answer', label: `Tabellen in ${nf}`, copyFrom: i === 0 ? null : `${steps[i - 1]![0].toLowerCase()}-tables`, solution: null },
+      {
+        id: `${key}-tables`,
+        type: 'schema-answer',
+        label: `Tabellen in ${nf}`,
+        copyFrom: i === 0 ? null : `${steps[i - 1]![0].toLowerCase()}-tables`,
+        // The relational model with cardinalities is asked for in the final step
+        ...(nf === '3NF' ? { askCardinality: true } : {}),
+        solution: null,
+      },
       { id: `${key}-reason`, type: 'freetext', label: `Begründung ${nf}`, maxLength: null, solution: null },
     )
   })
@@ -220,6 +246,27 @@ export function examWarnings(content: ExamContent): ExamWarning[] {
     }
   }
   if (!content.blocks.some(isAnswerBlock)) warnings.push({ message: 'Die Prüfung hat keinen Antwortblock' })
+
+  for (const b of content.blocks) {
+    if (b.type !== 'schema-answer' || !b.solution) continue
+    const name = b.label || b.id
+    const fks = b.solution.flatMap(t => t.columns.filter(c => c.fk).map(c => ({ table: t.name.trim() || '?', column: c.name, fk: c.fk! })))
+    for (const { table, column, fk } of fks) {
+      // Missing cardinalities are reported below as a whole
+      const message = fkMessage(b.solution, column, fk)
+      if (message) warnings.push({ blockId: b.id, message: `Musterlösung „${name}“, Tabelle „${table}“: ${message}` })
+    }
+    if (!b.askCardinality) continue
+    const missing = fks.filter(f => !f.fk.cardinality)
+    if (missing.length === fks.length) {
+      warnings.push({ blockId: b.id, message: `In „${name}“ werden Kardinalitäten abgefragt, die Musterlösung enthält aber keine` })
+    }
+    else {
+      for (const f of missing) {
+        warnings.push({ blockId: b.id, message: `Musterlösung „${name}“: Kardinalität fehlt bei ${f.table}.${f.column.trim() || '?'}` })
+      }
+    }
+  }
 
   if (content.template === 'normalization') {
     const given = content.blocks.find(b => b.type === 'table')

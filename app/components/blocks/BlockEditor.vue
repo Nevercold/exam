@@ -16,7 +16,7 @@ const copyFromItems = computed(() => [{ label: 'Keine Übernahme', value: NONE }
 function copySolutionFromSource() {
   if (block.value.type !== 'schema-answer' || !block.value.copyFrom) return
   const source = props.blocks.find(b => b.id === (block.value as { copyFrom: string }).copyFrom)
-  if (source?.type === 'schema-answer' && source.solution) block.value.solution = structuredClone(toRaw(source.solution))
+  if (source?.type === 'schema-answer' && source.solution) block.value.solution = copySchemaTables(toRaw(source.solution))
 }
 </script>
 
@@ -92,12 +92,24 @@ function copySolutionFromSource() {
           />
         </UFormField>
       </div>
+      <USwitch
+        :model-value="!!block.askCardinality"
+        :disabled="disabled"
+        label="Kardinalitäten abfragen"
+        description="Schüler geben bei jedem Fremdschlüssel 1:1 oder 1:n an; darunter erscheint das Relationenmodell als Diagramm."
+        @update:model-value="(block as { askCardinality?: boolean }).askCardinality = $event || undefined"
+      />
 
       <USeparator label="Musterlösung (nur für Lehrkräfte sichtbar)" />
       <template v-if="block.solution">
         <BlocksSchemaTablesInput
           v-model="block.solution"
           :disabled="disabled"
+          :ask-cardinality="!!block.askCardinality"
+        />
+        <BlocksRelationDiagram
+          v-if="block.askCardinality && block.solution.length"
+          :tables="block.solution"
         />
         <div
           v-if="!disabled"

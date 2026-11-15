@@ -50,16 +50,22 @@ and a read-only view (preview, verification page).
 - **`text`** — Markdown task text/heading. Rendered with a safe Markdown renderer (no raw HTML).
 - **`table`** — given table (`columns: string[]`, `rows: string[][]`), e.g. the unnormalized table.
 - **`schema-answer`** — student builds tables:
-  `tables: [{ name, columns: [{ name, pk, fk?: { table, column } }], rows: string[][] }]`.
-  Option `copyFrom: blockId` adds a button "Tabellen aus vorherigem Schritt übernehmen".
-  Hints: table without PK, FK to missing table/column, empty or duplicate names, empty cells,
-  rows with wrong cell count.
+  `tables: [{ name, columns: [{ name, pk, fk?: { table, column, cardinality? } }], rows: string[][] }]`.
+  Option `copyFrom: blockId` adds a button "Tabellen aus vorherigem Schritt übernehmen" (copies keys and
+  cardinalities). Option `askCardinality`: every FK needs `1:1` or `1:n` (seen from the referenced table);
+  relationships are derived from FKs (`shared/utils/relations.ts`) and shown as diagram + text list on the
+  student page, in the editor, on the verification page and in the PDF. Missing cardinalities: hint while
+  working, warning dialog on export (export stays possible). The verification page compares relationships
+  with the solution (informational, no points): tables matched by name or columns, reversed direction is an
+  error, a missing junction table is reported as unresolved n:m (info).
+  Hints: table without PK, FK to missing table/column or to a non-PK column, empty or duplicate names, empty
+  cells, rows with wrong cell count.
 - **`freetext`** — reasoning text, optional character limit.
 
 ### Normalization template
 
 `text` (scenario) → `table` (unnormalized) → for 1NF/2NF/3NF: `text` (heading) + `schema-answer`
-(`copyFrom` the previous step) + `freetext` (reasoning). Template checks (warnings in editor and
+(`copyFrom` the previous step; the 3NF step has `askCardinality`) + `freetext` (reasoning). Template checks (warnings in editor and
 `validate_exam`): ≥ 8 columns, 3–5 rows, solution present in every answer block. A "troll" exam is
 just an exam whose solution has unchanged tables in every step.
 
