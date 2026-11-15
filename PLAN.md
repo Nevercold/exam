@@ -61,6 +61,10 @@ and a read-only view (preview, verification page).
   Hints: table without PK, FK to missing table/column or to a non-PK column, empty or duplicate names, empty
   cells, rows with wrong cell count.
 - **`freetext`** — reasoning text, optional character limit.
+- Both answer blocks have optional `points` (max., teacher-only). The verification page checks many PDFs at once
+  (overview, duplicates skipped, CSV for the grade book) and, if `NUXT_AI_*` is configured, asks an
+  OpenAI-compatible API (Hetzner Inference) for a points suggestion + comment per block. Sent without the name,
+  not stored; the teacher decides.
 
 ### Normalization template
 

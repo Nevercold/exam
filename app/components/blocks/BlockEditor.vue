@@ -92,6 +92,21 @@ function copySolutionFromSource() {
           />
         </UFormField>
       </div>
+      <UFormField
+        label="Punkte"
+        help="Höchstpunktzahl für diesen Block (für die Bewertung, Schüler sehen sie nicht)"
+        class="sm:max-w-56"
+      >
+        <UInputNumber
+          :model-value="block.points"
+          :min="0.5"
+          :max="100"
+          :step="0.5"
+          :disabled="disabled"
+          class="w-full"
+          @update:model-value="(block as { points?: number }).points = $event ?? undefined"
+        />
+      </UFormField>
       <USwitch
         :model-value="!!block.askCardinality"
         :disabled="disabled"
@@ -161,7 +176,7 @@ function copySolutionFromSource() {
 
     <!-- freetext -->
     <template v-else-if="block.type === 'freetext'">
-      <div class="grid sm:grid-cols-[1fr_12rem] gap-4">
+      <div class="grid sm:grid-cols-[1fr_10rem_10rem] gap-4">
         <UFormField label="Beschriftung">
           <UInput
             v-model="block.label"
@@ -182,6 +197,20 @@ function copySolutionFromSource() {
             :disabled="disabled"
             class="w-full"
             @update:model-value="(block as { maxLength: number | null }).maxLength = $event ?? null"
+          />
+        </UFormField>
+        <UFormField
+          label="Punkte"
+          help="nur für die Bewertung"
+        >
+          <UInputNumber
+            :model-value="block.points"
+            :min="0.5"
+            :max="100"
+            :step="0.5"
+            :disabled="disabled"
+            class="w-full"
+            @update:model-value="(block as { points?: number }).points = $event ?? undefined"
           />
         </UFormField>
       </div>

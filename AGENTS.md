@@ -61,6 +61,7 @@ server/
   plugins/          db (migrations), zod-locale, session-check, oauth-cleanup
 shared/utils/       exam.ts (block model, student view, templates, warnings), hints.ts (formal hints),
                     relations.ts (relationships from FKs, diagram layout/SVG, comparison with the solution),
+                    grading.ts (AI grading prompt + reply validation),
                     submission.ts (canonical JSON, hash, signature types), schemas.ts (auth/users)
 scripts/            backup.mjs (online SQLite backup), keygen.mjs, load-test.mjs
 docs/               deployment.md
@@ -79,7 +80,10 @@ test/               Vitest unit tests (pure logic, no Nuxt context)
   On the client: `errorMessage(err)` from `app/utils/errors.ts`.
 - **Rate limits** for everything public or brute-forceable: `rateLimit(event, scope, limit, ms)`. A whole school
   shares one IP: limit failures (wrong PINs: `countPinMiss`), not normal use.
-- **Student data:** the server never receives student names or answers. `/api/sign` takes a hash only; the
+- **AI grading** (`/api/grade`, `server/utils/ai.ts`, `shared/utils/grading.ts`): only when the teacher asks for a
+  suggestion, answers (never the name) pass through the server to the configured OpenAI-compatible API. Never
+  store or log them, not even in error messages (provider error bodies may echo the request).
+- **Student data:** the server never receives student names, nor answers outside AI grading. `/api/sign` takes a hash only; the
   verification page extracts and hashes the PDF content in the browser.
 - **Solutions:** content reaches students only through `toStudentContent()` (allow-list schema, tested).
 - **Run lifecycle:** `runStatus()` (waiting → running → ended) and `canSign()` (running + 10 min grace) in
@@ -135,6 +139,11 @@ test/               Vitest unit tests (pure logic, no Nuxt context)
 - New fields in the block or answer model must be `.optional()` without `.default()`: a default adds keys when
   old data is parsed, which changes released snapshots and makes stored data differ from what was hashed. Old
   answers must parse to exactly the same JSON (test in `test/relations.test.ts`).
+- OpenAI-compatible servers differ: not all accept `response_format` json_schema (we fall back after a 400), and
+  reasoning models may wrap the JSON in `<think>` or code fences (`extractJson`). Test against a mock that does
+  both before trusting a new provider.
+- A literal BOM (`﻿`) in a template string becomes an invisible character after `lint:fix` and then fails
+  `no-irregular-whitespace`: use `String.fromCharCode(0xFEFF)`.
 - `@click="fn"` passes the event as first argument; for functions with an optional parameter (`exportPdf(force)`)
   write `@click="fn()"`.
 - The relational diagram is plain SVG from `diagramLayout()`: the Vue template renders it in the browser (escaped),

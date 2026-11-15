@@ -56,8 +56,35 @@ does not end running exams, and students keep working in their browsers while th
 | `NUXT_ADMIN_PASSWORD` | first start | Initial admin password. **Remove it from `.env` afterwards.** |
 | `DOMAIN` | variant A | Domain for Caddy's certificate |
 | `BIND` | variant B | Address the app port is bound to (default `127.0.0.1:3000`) |
+| `NUXT_AI_BASE_URL` | no | OpenAI-compatible API for grading suggestions, e.g. `https://inference.hetzner.com/api/v1` |
+| `NUXT_AI_API_KEY` | no | API key for it (stays on the server) |
+| `NUXT_AI_MODEL` | no | Model name, e.g. `Qwen/Qwen3.6-35B-A3B-FP8` (list: `GET <base url>/models`) |
+| `NUXT_AI_REQUESTS_PER_MINUTE` | no | Spacing between requests (default `10`, Hetzner's limit per key) |
 
 The database lives in the volume mounted at `/data` (`/data/exam.db`).
+
+### AI grading suggestions (optional)
+
+With all three `NUXT_AI_*` variables set, the verification page offers "KI-Vorschlag erstellen" per PDF and
+"Alle mit KI bewerten" for a whole class. The suggestion is points per answer block (maximum set in the editor)
+plus a short comment; the teacher decides.
+
+- **What is sent:** task texts, model solution, maximum points and the answers from the PDF, **without the
+  name**. The request goes through the server (the key never reaches the browser); nothing is stored or logged.
+- **Provider:** any OpenAI-compatible chat completions API. Structured outputs (`response_format` json_schema)
+  are used if supported, otherwise plain JSON. Example with [Hetzner Inference](https://docs.hetzner.com/general/company-and-policy/experiments/inference/)
+  (EU, states that request content isn't stored; experimental, no SLA):
+
+  ```bash
+  NUXT_AI_BASE_URL=https://inference.hetzner.com/api/v1
+  NUXT_AI_API_KEY=<token from the Hetzner Experiments dashboard>
+  NUXT_AI_MODEL=Qwen/Qwen3.6-35B-A3B-FP8
+  ```
+
+- **Data protection:** answers are personal data of the students even without a name. Clarify with the school's
+  data protection officer before enabling it.
+- Requests are queued so they stay under `NUXT_AI_REQUESTS_PER_MINUTE`; grading a class of 25 takes about
+  2–3 minutes at 10 per minute.
 
 ### Rotating the signing key
 

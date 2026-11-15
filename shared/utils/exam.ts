@@ -58,6 +58,9 @@ export const schemaTableSchema = z.object({
 
 export const schemaTablesSchema = z.array(schemaTableSchema).max(LIMITS.tables)
 
+// Maximum points of an answer block (half points allowed). Teacher-only, like the solution.
+const pointsSchema = z.number().min(0.5, 'Mindestens 0,5 Punkte').max(100, 'Höchstens 100 Punkte').multipleOf(0.5, 'Nur ganze oder halbe Punkte').optional()
+
 export const textBlockSchema = z.object({
   id: blockId,
   type: z.literal('text'),
@@ -79,6 +82,7 @@ export const schemaAnswerBlockSchema = z.object({
   copyFrom: blockId.nullable().default(null),
   // Students must give a cardinality for every FK; shows the relational diagram. Optional for the same reason as above.
   askCardinality: z.boolean().optional(),
+  points: pointsSchema,
   solution: schemaTablesSchema.nullable().default(null),
 })
 
@@ -87,6 +91,7 @@ export const freetextBlockSchema = z.object({
   type: z.literal('freetext'),
   label: label.default(''),
   maxLength: z.number().int().min(10).max(LIMITS.freetext).nullable().default(null),
+  points: pointsSchema,
   solution: z.string().max(LIMITS.freetext).nullable().default(null),
 })
 
@@ -246,6 +251,14 @@ export function examWarnings(content: ExamContent): ExamWarning[] {
     }
   }
   if (!content.blocks.some(isAnswerBlock)) warnings.push({ message: 'Die Prüfung hat keinen Antwortblock' })
+
+  // Points are optional, but half-scored exams give wrong totals
+  const scored = content.blocks.filter(b => (b.type === 'schema-answer' || b.type === 'freetext'))
+  if (scored.some(b => b.points !== undefined)) {
+    for (const b of scored) {
+      if (b.points === undefined) warnings.push({ blockId: b.id, message: `Antwortblock "${b.label || b.id}" hat keine Punktzahl` })
+    }
+  }
 
   for (const b of content.blocks) {
     if (b.type !== 'schema-answer' || !b.solution) continue

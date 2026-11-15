@@ -18,9 +18,11 @@ type Block =
                                                                   // (copies keys and cardinalities too)
       askCardinality?: boolean,                                   // true: students give a cardinality for every
                                                                   // FK and see the relational diagram; omit = off
+      points?: number,                                            // max. points (0.5–100, steps of 0.5), teacher-only
       solution: SchemaTable[] | null }                            // model solution (never shown to students)
   | { id: string, type: 'freetext', label: string,                // student writes text
-      maxLength: number | null, solution: string | null }         // solution = expected reasoning
+      maxLength: number | null, points?: number,
+      solution: string | null }                                   // solution = expected reasoning
 
 type SchemaTable = {
   name: string
@@ -76,6 +78,9 @@ Abteilung 1:n Bestellung, Lieferant 1:n Bestellung, Bestellung 1:n Bestellpositi
 
 validate_exam warns about FKs that don't point to a primary key and about missing cardinalities in solutions of
 blocks with askCardinality.
+
+Points: set them on all answer blocks or on none (validate_exam warns about a mix). They are the maximum for the
+teacher's grading (and AI grading suggestions on the verification page); students don't see them.
 
 Block ids: short, stable, e.g. "intro", "given", "1nf-tables". Limits: 30 columns, 50 rows, 20 tables,
 500 chars per cell.

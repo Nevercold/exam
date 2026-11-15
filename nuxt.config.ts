@@ -41,6 +41,14 @@ export default defineNuxtConfig({
     signingKeyId: 'k1',
     // Retired keys still accepted for verification: JSON object { "<kid>": "<SPKI DER base64>" }
     signingRetiredKeys: '',
+    // Optional AI grading suggestions via an OpenAI-compatible API (NUXT_AI_BASE_URL, NUXT_AI_API_KEY, NUXT_AI_MODEL).
+    // Disabled while any of the three is empty. See docs/deployment.md.
+    ai: {
+      baseUrl: '',
+      apiKey: '',
+      model: '',
+      requestsPerMinute: 10,
+    },
     session: {
       maxAge: 60 * 60 * 24 * 14,
       cookie: { sameSite: 'lax' },

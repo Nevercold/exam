@@ -5,7 +5,9 @@ primary/foreign keys, free text), start it with a PIN, and students answer in th
 student exports a **signed PDF** and uploads it to the school cloud themselves.
 
 - **No student data on the server.** Names and answers never leave the student's browser; the server only signs a
-  hash while the exam is running. Signed PDFs can be checked on the verification page.
+  hash while the exam is running. Signed PDFs can be checked on the verification page, a whole class at once.
+- **Optional AI grading suggestions** via any OpenAI-compatible API (e.g. Hetzner Inference): points per block
+  and a comment, sent without the student's name and never stored. The teacher decides.
 - **Normalization template** (1NF → 2NF → 3NF) for Lernfeld 8.2, other exams via the generic block editor.
 - **MCP server** with OAuth 2.1: let an AI assistant draft exams, the teacher reviews and releases them.
 
