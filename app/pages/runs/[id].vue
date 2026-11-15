@@ -114,11 +114,17 @@ const signOpen = computed(() => !!run.value?.signUntil && new Date(run.value.sig
           v-html="qrSvg"
         />
         <!-- eslint-enable vue/no-v-html -->
-        <p class="text-muted">
-          {{ joinHost }}
-        </p>
       </div>
-      <div class="shrink-0 flex flex-col items-center gap-6 text-center">
+      <div class="min-w-0 flex flex-col items-center gap-6 text-center">
+        <!-- Most students join on laptops, where scanning the QR code is awkward: the address must be readable from the back row -->
+        <div class="max-w-full">
+          <p class="text-muted uppercase tracking-widest text-base">
+            Im Browser öffnen
+          </p>
+          <p class="text-4xl lg:text-6xl font-bold text-primary break-all">
+            {{ joinHost }}
+          </p>
+        </div>
         <div>
           <p class="text-muted uppercase tracking-widest text-base">
             PIN
