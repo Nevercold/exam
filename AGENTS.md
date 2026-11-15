@@ -142,8 +142,12 @@ test/               Vitest unit tests (pure logic, no Nuxt context)
 - OpenAI-compatible servers differ: not all accept `response_format` json_schema (we fall back after a 400), and
   reasoning models may wrap the JSON in `<think>` or code fences (`extractJson`). Test against a mock that does
   both before trusting a new provider.
-- A literal BOM (`﻿`) in a template string becomes an invisible character after `lint:fix` and then fails
-  `no-irregular-whitespace`: use `String.fromCharCode(0xFEFF)`.
+- `lint:fix` turns `﻿`/`​` escapes into the invisible characters themselves (then
+  `no-irregular-whitespace` fails or the code becomes unreadable): use `String.fromCharCode(…)` constants
+  (`ZERO_WIDTH_SPACE` in `app/utils/pdf.ts`).
+- pdfmake wraps only at spaces: a long word pushes a table off the page and the content is silently lost. All
+  student text in the PDF goes through `breakable()`, tables with > 12 columns are split (`columnParts`). Check
+  layout changes with a stress PDF (30 columns, 120-character words), not just with nice data.
 - The auto-import scanner also missed `export`s placed after the big dictionary objects in `app/utils/ui-text.ts`.
   Keep helper exports above them; if something is "not found", run `pnpm exec nuxt prepare` and grep
   `.nuxt/imports.d.ts`.

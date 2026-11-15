@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildDocDefinition, pdfFilename } from '../app/utils/pdf'
+import { breakable, buildDocDefinition, columnParts, MAX_COLUMNS_PER_PART, pdfFilename, ZERO_WIDTH_SPACE } from '../app/utils/pdf'
 import { examContentSchema, toStudentContent } from '../shared/utils/exam'
 import type { SignedEnvelope, Submission } from '../shared/utils/submission'
 
@@ -63,6 +63,32 @@ describe('relational model in the PDF', () => {
 
   it('stays as before otherwise', () => {
     expect(build(false)).not.toContain('<svg')
+  })
+})
+
+describe('long content in the PDF', () => {
+  it('gives long words invisible break points, short words stay untouched', () => {
+    expect(breakable('Kunde Ort')).toBe('Kunde Ort')
+    const long = 'Donaudampfschifffahrtsgesellschaft'
+    const out = breakable(long)
+    expect(out).not.toBe(long)
+    expect(out.replaceAll(ZERO_WIDTH_SPACE, '')).toBe(long)
+    expect(out.split(ZERO_WIDTH_SPACE).every(part => part.length <= 12)).toBe(true)
+  })
+
+  it('splits very wide tables into parts that repeat the primary key', () => {
+    const cols = (n: number, pks: number[]) => Array.from({ length: n }, (_, i) => ({ pk: pks.includes(i) }))
+    expect(columnParts(cols(8, [0]))).toEqual([[0, 1, 2, 3, 4, 5, 6, 7]])
+    const parts = columnParts(cols(30, [0, 1]))
+    expect(parts.every(p => p.length <= MAX_COLUMNS_PER_PART && p[0] === 0 && p[1] === 1)).toBe(true)
+    expect(new Set(parts.flat()).size).toBe(30)
+  })
+
+  it('keeps every cell of a 30-column table', () => {
+    const wide = { name: 'Breit', columns: Array.from({ length: 30 }, (_, i) => ({ name: `S${i}`, pk: i === 0, fk: null })), rows: [Array.from({ length: 30 }, (_, i) => `W${i}`)] }
+    const json = JSON.stringify(buildDocDefinition({ content, submission: { ...submission, answers: { s: [wide] } }, envelope, hash: 'a'.repeat(64) }))
+    for (let i = 0; i < 30; i++) expect(json).toContain(`"W${i}"`)
+    expect(json).toContain('Breit (Teil 1 von 3, 30 Spalten)')
   })
 })
 

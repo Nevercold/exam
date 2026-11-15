@@ -13,39 +13,78 @@ const dateTime = new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeSty
 // Wide tables (the 1NF step often has 10+ columns) switch the PDF to landscape and shrink the font,
 // with star widths so columns wrap instead of running off the page.
 const WIDE_TABLE_COLUMNS = 7
+// More columns than this don't fit a landscape page readably: the table is split into parts, each repeating the
+// primary key columns so every row stays identifiable.
+export const MAX_COLUMNS_PER_PART = 12
+
+/**
+ * pdfmake only wraps at spaces, so a long word ("Donaudampfschifffahrtsgesellschaft", an IBAN, a URL) pushes the
+ * table off the page and the content is lost. Zero-width spaces inside long words give it break points without
+ * changing what is shown. Only for the rendered text: the embedded submission (hash) is untouched.
+ */
+export const ZERO_WIDTH_SPACE = String.fromCharCode(0x200B)
+
+export function breakable(text: string, every = 12): string {
+  return text.replace(/\S{16,}/g, word => word.replace(new RegExp(`(.{${every}})(?=.)`, 'gsu'), `$1${ZERO_WIDTH_SPACE}`))
+}
+
+/** Column groups for a table: all columns, or parts of at most MAX_COLUMNS_PER_PART incl. the repeated PK columns. */
+export function columnParts(columns: { pk: boolean }[]): number[][] {
+  const all = columns.map((_, i) => i)
+  if (columns.length <= MAX_COLUMNS_PER_PART) return [all]
+  const keys = all.filter(i => columns[i]!.pk).slice(0, MAX_COLUMNS_PER_PART - 1)
+  const rest = all.filter(i => !keys.includes(i))
+  const size = MAX_COLUMNS_PER_PART - keys.length
+  const parts: number[][] = []
+  for (let i = 0; i < rest.length; i += size) parts.push([...keys, ...rest.slice(i, i + size)])
+  return parts
+}
+
+function tablePart(t: SchemaTable, cols: number[]): Content {
+  const wide = cols.length > WIDE_TABLE_COLUMNS
+  return {
+    table: {
+      headerRows: 1,
+      widths: wide ? cols.map(() => '*') : undefined,
+      body: [
+        cols.map((ci) => {
+          const c = t.columns[ci]!
+          return {
+            stack: [
+              { text: breakable(c.name || '?'), bold: true, decoration: c.pk ? 'underline' as const : undefined },
+              ...(c.pk ? [{ text: 'PK', fontSize: 7, color: '#047857' }] : []),
+              // Roboto has no arrow glyph
+              ...(c.fk ? [{ text: breakable(`FK: ${c.fk.table}.${c.fk.column}${c.fk.cardinality ? ` (${c.fk.cardinality})` : ''}`), fontSize: 7, color: '#0369a1' }] : []),
+            ],
+            fillColor: '#f4f4f5',
+          }
+        }),
+        ...t.rows.map(r => cols.map(ci => ({ text: breakable(r[ci] ?? '') }))),
+      ],
+    },
+    layout: { hLineColor: '#d4d4d8', vLineColor: '#d4d4d8' },
+    fontSize: cols.length > 10 ? 7 : wide ? 8 : 9,
+  }
+}
 
 function schemaTablesContent(tables: SchemaTable[]): Content[] {
   if (tables.length === 0) return [{ text: 'Keine Tabellen angegeben', italics: true, color: '#71717a' }]
   return tables.map((t, ti) => {
-    const cols = t.columns.length
-    const wide = cols > WIDE_TABLE_COLUMNS
+    const name = breakable(t.name.trim() || `Tabelle ${ti + 1} (ohne Namen)`)
+    if (t.columns.length === 0) {
+      return { stack: [{ text: name, bold: true, margin: [0, 6, 0, 3] }, { text: 'Keine Spalten', italics: true, color: '#71717a' }] }
+    }
+    const parts = columnParts(t.columns)
     return {
-      stack: [
-        { text: t.name.trim() || `Tabelle ${ti + 1} (ohne Namen)`, bold: true, margin: [0, 6, 0, 3] },
-        cols === 0
-          ? { text: 'Keine Spalten', italics: true, color: '#71717a' }
-          : {
-              table: {
-                headerRows: 1,
-                widths: wide ? Array.from({ length: cols }, () => '*') : undefined,
-                body: [
-                  t.columns.map(c => ({
-                    stack: [
-                      { text: c.name || '?', bold: true, decoration: c.pk ? 'underline' as const : undefined },
-                      ...(c.pk ? [{ text: 'PK', fontSize: 7, color: '#047857' }] : []),
-                      // Roboto has no arrow glyph
-                      ...(c.fk ? [{ text: `FK: ${c.fk.table}.${c.fk.column}${c.fk.cardinality ? ` (${c.fk.cardinality})` : ''}`, fontSize: 7, color: '#0369a1' }] : []),
-                    ],
-                    fillColor: '#f4f4f5',
-                  })),
-                  ...t.rows.map(r => r.map(cell => ({ text: cell }))),
-                ],
-              },
-              layout: { hLineColor: '#d4d4d8', vLineColor: '#d4d4d8' },
-              fontSize: cols > 10 ? 7 : wide ? 8 : 9,
-            },
-      ],
-      unbreakable: t.rows.length < 15,
+      stack: parts.flatMap((cols, pi) => [
+        {
+          text: parts.length > 1 ? `${name} (Teil ${pi + 1} von ${parts.length}, ${t.columns.length} Spalten)` : name,
+          bold: true,
+          margin: [0, 6, 0, 3] as [number, number, number, number],
+        },
+        tablePart(t, cols),
+      ]),
+      unbreakable: t.rows.length < 15 && parts.length === 1,
     }
   })
 }
@@ -59,7 +98,7 @@ function relationalModelContent(tables: SchemaTable[]): Content[] {
     { svg: diagramSvg(layout), fit: [500, 600] },
     { text: 'Beziehungen', bold: true, margin: [0, 8, 0, 2] },
     rels.length
-      ? { ul: rels.map(r => ({ text: relationshipText(r), color: r.cardinality ? undefined : '#b45309' })) }
+      ? { ul: rels.map(r => ({ text: breakable(relationshipText(r), 40), color: r.cardinality ? undefined : '#b45309' })) }
       : { text: 'Keine Fremdschlüssel, daher keine Beziehungen', italics: true, color: '#71717a' },
   ]
 }
@@ -114,7 +153,7 @@ export function buildDocDefinition(opts: {
       body.push(
         { text: `${block.label || 'Antwort'}${block.points ? ` (${pointsLabel(block.points)})` : ''}`, style: 'heading', headlineLevel: 1 },
         typeof text === 'string' && text.trim()
-          ? { text }
+          ? { text: breakable(text, 40) }
           : { text: 'Keine Antwort', italics: true, color: '#71717a' },
       )
     }
