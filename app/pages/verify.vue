@@ -435,6 +435,12 @@ const asText = (v: unknown) => (typeof v === 'string' ? v : '')
                 Prüfung
               </dt>
               <dd>{{ result.embedded.submission.examTitle }}</dd>
+              <template v-if="result.embedded.submission.translation">
+                <dt class="text-muted">
+                  Übersetzung
+                </dt>
+                <dd>Aufgaben mit Übersetzung angezeigt: {{ languageName(result.embedded.submission.translation) }}</dd>
+              </template>
               <dt class="text-muted">
                 Prüfcode
               </dt>

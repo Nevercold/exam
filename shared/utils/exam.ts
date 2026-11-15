@@ -58,10 +58,41 @@ export const schemaTableSchema = z.object({
 
 export const schemaTablesSchema = z.array(schemaTableSchema).max(LIMITS.tables)
 
-/** "4 Punkte", "1 Punkt", "2,5 Punkte" */
-export function pointsLabel(points: number): string {
-  return `${points.toLocaleString('de-DE', { maximumFractionDigits: 1 })} ${points === 1 ? 'Punkt' : 'Punkte'}`
+/** "4 Punkte", "1 Punkt", "2,5 Punkte" (English: "4 points") */
+export function pointsLabel(points: number, lang: 'de' | 'en' = 'de'): string {
+  const n = points.toLocaleString(lang === 'en' ? 'en-GB' : 'de-DE', { maximumFractionDigits: 1 })
+  if (lang === 'en') return `${n} ${points === 1 ? 'point' : 'points'}`
+  return `${n} ${points === 1 ? 'Punkt' : 'Punkte'}`
 }
+
+/** The one translatable text of a block: Markdown, table caption or answer label. */
+export function translatableText(b: Block | StudentBlockLike): string {
+  if (b.type === 'text') return b.markdown
+  if (b.type === 'table') return b.caption
+  return b.label
+}
+type StudentBlockLike = { type: 'text', markdown: string } | { type: 'table', caption: string } | { type: 'schema-answer' | 'freetext', label: string }
+
+const RTL_LANGUAGES = new Set(['ar', 'fa', 'he', 'ur', 'ps', 'ckb', 'dv', 'yi', 'ug', 'sd', 'prs', 'ks'])
+export const isRtl = (code: string) => RTL_LANGUAGES.has(code.split('-')[0]!)
+
+/** Name of a language, by default in German ("Ukrainisch"); `inLocale = code` gives the native name ("українська"). */
+export function languageName(code: string, inLocale = 'de'): string {
+  try {
+    return new Intl.DisplayNames([inLocale], { type: 'language' }).of(code) ?? code
+  }
+  catch {
+    return code
+  }
+}
+
+// ISO 639-1 plus a few languages common among refugees in Germany (Sorani, Kurmanji, Dari). Any other BCP 47 code
+// is valid in the data model too (e.g. via MCP); this list only feeds the editor's picker.
+export const LANGUAGE_CODES = ('aa ab af ak am an ar as av ay az ba be bg bi bm bn bo br bs ca ce ch co cr cs cv cy da '
+  + 'dv dz ee el en eo es et eu fa ff fi fj fo fr fy ga gd gl gn gu gv ha he hi ho hr ht hu hy hz ia id ig ii ik io is '
+  + 'it iu ja jv ka kg ki kj kk kl km kn ko kr ks ku kv kw ky la lb lg li ln lo lt lu lv mg mh mi mk ml mn mr ms mt my '
+  + 'na nb nd ne ng nl nn no nr nv ny oc oj om or os pa pl ps pt qu rm rn ro ru rw sa sc sd se sg si sk sl sm sn so sq '
+  + 'sr ss st su sv sw ta te tg th ti tk tl tn to tr ts tt tw ty ug uk ur uz ve vi wa wo xh yi yo za zh zu ckb kmr prs').split(' ')
 
 // Maximum points of an answer block (half points allowed). Shown to students next to the task.
 const pointsSchema = z.number().min(0.5, 'Mindestens 0,5 Punkte').max(100, 'Höchstens 100 Punkte').multipleOf(0.5, 'Nur ganze oder halbe Punkte').optional()
@@ -107,10 +138,32 @@ export const blockSchema = z.discriminatedUnion('type', [
   freetextBlockSchema,
 ])
 
+// ---------- Translations of the task texts (optional, shown below the German original) ----------
+
+/** BCP 47 language code ("uk", "ar", "pt-BR"). German is the original and can't be a translation. */
+export const languageCodeSchema = z.string()
+  .regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/, 'Ungültiger Sprachcode')
+  .refine(c => c !== 'de' && !c.startsWith('de-'), 'Deutsch ist die Originalsprache')
+
+/** Per language: the translated title and one text per block (text: Markdown, table: caption, answer: label). */
+export const translationSchema = z.object({
+  title: z.string().max(LIMITS.title).default(''),
+  blocks: z.record(blockId, z.string().max(LIMITS.markdown)).default({}),
+})
+
+export const MAX_TRANSLATIONS = 10
+
+const translationsSchema = z.record(languageCodeSchema, translationSchema)
+  .refine(t => Object.keys(t).length <= MAX_TRANSLATIONS, `Höchstens ${MAX_TRANSLATIONS} Sprachen`)
+
+export type Translation = z.output<typeof translationSchema>
+
 export const examContentSchema = z.object({
   title: z.string().trim().min(1, 'Titel fehlt').max(LIMITS.title),
   template: z.enum(EXAM_TEMPLATES).default('blank'),
   blocks: z.array(blockSchema).max(LIMITS.blocks),
+  // Optional without default (see the notes on schemaColumnSchema)
+  translations: translationsSchema.optional(),
 }).superRefine((content, ctx) => {
   const seen = new Map<string, number>()
   content.blocks.forEach((b, i) => {
@@ -146,6 +199,8 @@ const studentBlockSchema = z.discriminatedUnion('type', [
 export const studentContentSchema = z.object({
   title: z.string(),
   blocks: z.array(studentBlockSchema),
+  // Only task texts (title, Markdown, captions, labels), never solutions
+  translations: translationsSchema.optional(),
 })
 
 export type StudentBlock = z.output<typeof studentBlockSchema>
@@ -153,7 +208,11 @@ export type StudentContent = z.output<typeof studentContentSchema>
 
 /** Strips solutions (and anything else not explicitly allowed). The only way content reaches students. */
 export function toStudentContent(content: ExamContent): StudentContent {
-  return studentContentSchema.parse({ title: content.title, blocks: content.blocks })
+  return studentContentSchema.parse({
+    title: content.title,
+    blocks: content.blocks,
+    ...(content.translations ? { translations: content.translations } : {}),
+  })
 }
 
 // ---------- Answers ----------
@@ -306,6 +365,14 @@ export function examWarnings(content: ExamContent): ExamWarning[] {
       for (const f of missing) {
         warnings.push({ blockId: b.id, message: `Musterlösung „${name}“: Kardinalität fehlt bei ${f.table}.${f.column.trim() || '?'}` })
       }
+    }
+  }
+
+  for (const [lang, tr] of Object.entries(content.translations ?? {})) {
+    const missing = content.blocks.filter(b => translatableText(b).trim() && !tr.blocks[b.id]?.trim()).length
+      + (tr.title.trim() ? 0 : 1)
+    if (missing) {
+      warnings.push({ message: `Übersetzung ${languageName(lang)}: ${missing === 1 ? '1 Text fehlt' : `${missing} Texte fehlen`}` })
     }
   }
 

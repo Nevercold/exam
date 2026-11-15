@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Student entry: PIN from the projector (the QR code links directly to /p/:pin)
-useHead({ title: 'Prüfung beitreten · exam' })
+const { t } = useStudentLanguage()
+useHead({ title: () => `${t.value.joinTitle} · exam` })
 
 const pinDigits = ref<(number | undefined)[]>([])
 const pin = computed(() => pinDigits.value.join(''))
@@ -12,7 +13,10 @@ async function join() {
 
 <template>
   <div class="w-full max-w-sm flex flex-col items-center gap-8">
-    <AppLogo size="lg" />
+    <div class="w-full flex items-center justify-between">
+      <AppLogo size="lg" />
+      <StudentLanguageMenu />
+    </div>
 
     <UCard
       class="w-full shadow-xl"
@@ -23,7 +27,7 @@ async function join() {
         @submit.prevent="join"
       >
         <p class="text-sm text-muted">
-          PIN der Prüfung (steht am Beamer)
+          {{ t.pinPrompt }}
         </p>
         <UPinInput
           v-model="pinDigits"
@@ -40,7 +44,7 @@ async function join() {
           block
           :disabled="pin.length !== 6"
         >
-          Weiter
+          {{ t.next }}
         </UButton>
       </form>
     </UCard>
@@ -49,7 +53,7 @@ async function join() {
       to="/login"
       class="text-sm text-muted hover:text-default"
     >
-      Login für Lehrkräfte
+      {{ t.teacherLogin }}
     </NuxtLink>
   </div>
 </template>

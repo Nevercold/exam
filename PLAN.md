@@ -61,6 +61,11 @@ and a read-only view (preview, verification page).
   Hints: table without PK, FK to missing table/column or to a non-PK column, empty or duplicate names, empty
   cells, rows with wrong cell count.
 - **`freetext`** — reasoning text, optional character limit.
+- **Translations** (optional, `content.translations[lang]`): any language, written by the teacher in the editor
+  (title + one text per block; table contents and solutions are not translated). Students switch a translation
+  on themselves (off by default); it is shown below the German text (RTL for Arabic etc.). The student interface
+  itself is German or English. Answers and the PDF stay German; the PDF notes which translation was shown.
+- The editor preview can be exported as a PDF (watermark "VORSCHAU").
 - Both answer blocks have optional `points` (max., shown to students and in the PDF). The verification page checks many PDFs at once
   (overview, duplicates skipped, CSV for the grade book) and, if `NUXT_AI_*` is configured, asks an
   OpenAI-compatible API (Hetzner Inference) for a points suggestion + comment per block. Sent without the name,

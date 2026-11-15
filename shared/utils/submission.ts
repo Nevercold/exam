@@ -17,6 +17,9 @@ export const submissionSchema = z.object({
   name: z.string().max(100),
   answers: z.record(z.string(), z.unknown()),
   exportedAt: z.string().max(40),
+  // Language of the task translation the student had switched on (part of the hash). Optional without default:
+  // parsing must return exactly what was hashed, also for PDFs from before this field existed.
+  translation: z.string().max(35).optional(),
 })
 
 export type Submission = z.infer<typeof submissionSchema>

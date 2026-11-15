@@ -1,7 +1,15 @@
 <script setup lang="ts">
 // Student: one block of the exam. Answer blocks write into `answers[block.id]`.
-const props = defineProps<{ block: StudentBlock, blocks: StudentBlock[], disabled?: boolean }>()
+// `translation`: the block's text in the language the student switched on, shown below the German original.
+const props = defineProps<{
+  block: StudentBlock
+  blocks: StudentBlock[]
+  disabled?: boolean
+  lang?: UiLang
+  translation?: { code: string, text: string } | null
+}>()
 const answers = defineModel<Answers>('answers', { required: true })
+const tx = computed(() => UI_TEXT[props.lang ?? 'de'])
 
 const tables = computed({
   get: () => (answers.value[props.block.id] as SchemaTable[] | undefined) ?? [],
@@ -18,7 +26,9 @@ if (props.block.type === 'schema-answer' && !Array.isArray(answers.value[props.b
 }
 
 const askCardinality = computed(() => props.block.type === 'schema-answer' && !!props.block.askCardinality)
-const hints = computed(() => props.block.type === 'schema-answer' ? schemaHints(tables.value, { askCardinality: askCardinality.value }) : [])
+const hints = computed(() => props.block.type === 'schema-answer'
+  ? schemaHints(tables.value, { askCardinality: askCardinality.value, lang: props.lang })
+  : [])
 
 const source = computed(() => {
   if (props.block.type !== 'schema-answer' || !props.block.copyFrom) return null
@@ -39,30 +49,65 @@ function requestCopy() {
 }
 
 const maxLength = computed(() => (props.block.type === 'freetext' ? props.block.maxLength : null) ?? LIMITS.freetext)
+const points = computed(() => (props.block.type === 'schema-answer' || props.block.type === 'freetext') && props.block.points
+  ? ` (${pointsLabel(props.block.points, props.lang)})`
+  : '')
+
+const tr = computed(() => (props.translation?.text.trim() ? props.translation : null))
+const trAttrs = computed(() => tr.value ? { lang: tr.value.code, dir: isRtl(tr.value.code) ? 'rtl' : 'ltr' } : {})
+const trLabel = computed(() => tr.value ? tx.value.translationLabel(languageName(tr.value.code, tr.value.code)) : '')
 </script>
 
 <template>
   <section class="flex flex-col gap-3">
-    <BlocksMarkdownView
-      v-if="block.type === 'text'"
-      :source="block.markdown"
-    />
+    <template v-if="block.type === 'text'">
+      <BlocksMarkdownView :source="block.markdown" />
+      <div
+        v-if="tr"
+        class="rounded-lg border-s-4 border-info bg-info/5 px-4 py-3"
+      >
+        <p class="text-xs font-medium text-info mb-1">
+          {{ trLabel }}
+        </p>
+        <BlocksMarkdownView
+          :source="tr.text"
+          v-bind="trAttrs"
+        />
+      </div>
+    </template>
 
-    <BlocksGivenTableView
-      v-else-if="block.type === 'table'"
-      :table="block.table"
-      :caption="block.caption"
-    />
+    <template v-else-if="block.type === 'table'">
+      <BlocksGivenTableView
+        :table="block.table"
+        :caption="block.caption"
+      />
+      <p
+        v-if="tr"
+        class="text-sm text-info -mt-1"
+        v-bind="trAttrs"
+      >
+        {{ tr.text }}
+      </p>
+    </template>
 
     <template v-else-if="block.type === 'schema-answer'">
       <div class="flex flex-wrap items-center justify-between gap-2">
-        <h3 class="font-semibold text-highlighted">
-          {{ block.label || 'Deine Tabellen' }}
-          <span
-            v-if="block.points"
-            class="font-normal text-muted"
-          >({{ pointsLabel(block.points) }})</span>
-        </h3>
+        <div>
+          <h3 class="font-semibold text-highlighted">
+            {{ block.label || tx.yourTables }}
+            <span
+              v-if="points"
+              class="font-normal text-muted"
+            >{{ points }}</span>
+          </h3>
+          <p
+            v-if="tr"
+            class="text-sm text-info"
+            v-bind="trAttrs"
+          >
+            {{ tr.text }}
+          </p>
+        </div>
         <UButton
           v-if="source && !disabled"
           icon="i-lucide-copy"
@@ -71,7 +116,7 @@ const maxLength = computed(() => (props.block.type === 'freetext' ? props.block.
           variant="soft"
           @click="requestCopy"
         >
-          Tabellen aus „{{ source.label || 'vorherigem Schritt' }}“ übernehmen
+          {{ tx.copyFrom(source.label || tx.previousStep) }}
         </UButton>
       </div>
       <UAlert
@@ -79,20 +124,22 @@ const maxLength = computed(() => (props.block.type === 'freetext' ? props.block.
         color="warning"
         variant="subtle"
         icon="i-lucide-triangle-alert"
-        title="Deine Tabellen in diesem Schritt werden ersetzt."
+        :title="tx.replaceWarning"
         :actions="[
-          { label: 'Ersetzen', color: 'warning', onClick: copyFromSource },
-          { label: 'Abbrechen', color: 'neutral', variant: 'ghost', onClick: () => { confirmCopy = false } },
+          { label: tx.replace, color: 'warning', onClick: copyFromSource },
+          { label: tx.cancel, color: 'neutral', variant: 'ghost', onClick: () => { confirmCopy = false } },
         ]"
       />
       <BlocksSchemaTablesInput
         v-model="tables"
         :disabled="disabled"
         :ask-cardinality="askCardinality"
+        :lang="lang"
       />
       <BlocksRelationDiagram
         v-if="askCardinality && tables.length"
         :tables="tables"
+        :lang="lang"
       />
       <ul
         v-if="hints.length && !disabled"
@@ -115,9 +162,10 @@ const maxLength = computed(() => (props.block.type === 'freetext' ? props.block.
 
     <template v-else-if="block.type === 'freetext'">
       <UFormField
-        :label="`${block.label || 'Deine Antwort'}${block.points ? ` (${pointsLabel(block.points)})` : ''}`"
-        :help="`${text.length} / ${maxLength} Zeichen`"
-        :ui="{ label: 'font-semibold text-highlighted' }"
+        :label="`${block.label || tx.yourAnswer}${points}`"
+        :description="tr?.text"
+        :help="tx.characters(text.length, maxLength)"
+        :ui="{ label: 'font-semibold text-highlighted', description: 'text-info' }"
       >
         <UTextarea
           v-model="text"

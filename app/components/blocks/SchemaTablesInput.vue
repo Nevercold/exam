@@ -2,7 +2,9 @@
 // Builds relational tables: name, columns with PK/FK, data rows.
 // Used by students (answers) and teachers (solutions). Scrolls horizontally on small screens.
 const tables = defineModel<SchemaTable[]>({ required: true })
-defineProps<{ disabled?: boolean, askCardinality?: boolean }>()
+const props = defineProps<{ disabled?: boolean, askCardinality?: boolean, lang?: UiLang }>()
+// Students may switch to English; teachers always get German
+const tx = computed(() => UI_TEXT[props.lang ?? 'de'])
 
 const root = useTemplateRef<HTMLElement>('root')
 // The data attribute may land on the input or on its wrapper, depending on the component
@@ -27,12 +29,12 @@ function removeTable(ti: number) {
   pendingColumns.value = {}
   if (!removed) return
   toast.add({
-    title: `Tabelle „${removed.name.trim() || ti + 1}“ gelöscht`,
+    title: tx.value.tableDeleted(removed.name.trim() || String(ti + 1)),
     color: 'neutral',
     icon: 'i-lucide-trash-2',
     duration: 8000,
     actions: [{
-      label: 'Rückgängig',
+      label: tx.value.undo,
       icon: 'i-lucide-undo-2',
       color: 'primary',
       variant: 'soft',
@@ -109,7 +111,7 @@ function setFkTable(c: SchemaColumn, table: string) {
 // Labels name the actual tables, so the direction is unambiguous: "Abteilung 1 : n Bestellung"
 function cardinalityItems(t: SchemaTable, c: SchemaColumn) {
   const parent = c.fk?.table || '?'
-  const child = t.name.trim() || 'diese Tabelle'
+  const child = t.name.trim() || tx.value.thisTable
   return CARDINALITIES.map(value => ({ value, label: `${parent} ${value.replace(':', ' : ')} ${child}` }))
 }
 
@@ -129,16 +131,18 @@ function toggleFk(c: SchemaColumn) {
       class="rounded-xl border-2 border-dashed border-default p-4 flex flex-col gap-3"
     >
       <p class="font-medium text-highlighted">
-        So legst du deine Tabellen an
+        {{ tx.howToTitle }}
       </p>
       <ol class="text-sm text-muted list-decimal pl-5 flex flex-col gap-1">
-        <li><strong class="text-default">Tabelle hinzufügen</strong> und ihr einen Namen geben (z. B. Kunde).</li>
-        <li><strong class="text-default">Spalten anlegen:</strong> Spaltennamen mit Komma getrennt eintippen (z. B. KundenNr, Name, Ort) und Enter drücken.</li>
-        <li><strong class="text-default">Schlüssel markieren:</strong> Unter jedem Spaltennamen PK (Primärschlüssel) bzw. FK (Fremdschlüssel) anklicken.</li>
-        <li><strong class="text-default">Datenzeilen eintragen.</strong> Enter in der letzten Zeile legt eine neue an.</li>
+        <li
+          v-for="([strong, rest], i) in tx.howTo"
+          :key="i"
+        >
+          <strong class="text-default">{{ strong }}</strong> {{ rest }}
+        </li>
       </ol>
       <p class="text-sm text-muted">
-        Für jede weitere Tabelle wieder „Tabelle hinzufügen“.
+        {{ tx.howToMore }}
       </p>
     </div>
 
@@ -153,12 +157,12 @@ function toggleFk(c: SchemaColumn) {
         <UInput
           v-model="t.name"
           :data-table-name="ti"
-          placeholder="Tabellenname, z. B. Kunde"
+          :placeholder="tx.tableName"
           :disabled="disabled"
           :maxlength="100"
           class="col-start-1 row-start-1 min-w-0 font-semibold"
           :class="{ 'col-span-2': disabled }"
-          :aria-label="`Name von Tabelle ${ti + 1}`"
+          :aria-label="tx.tableNameAria(ti + 1)"
           @keydown.enter.prevent="focus(`[data-new-columns='${ti}']`)"
         />
 
@@ -170,11 +174,11 @@ function toggleFk(c: SchemaColumn) {
           <UInput
             v-model="pendingColumns[ti]"
             :data-new-columns="ti"
-            :placeholder="t.columns.length ? 'Weitere Spalten, z. B. Ort, PLZ' : 'Spalten: z. B. KundenNr, Name, Ort'"
+            :placeholder="t.columns.length ? tx.columnsMore : tx.columnsFirst"
             :maxlength="1000"
             :disabled="t.columns.length >= LIMITS.columns"
             class="flex-1 min-w-0"
-            :aria-label="`Neue Spalten für Tabelle ${ti + 1}, mit Komma getrennt`"
+            :aria-label="tx.columnsAria(ti + 1)"
             @keydown.enter.prevent="submitColumns(t, ti)"
           />
           <UButton
@@ -184,7 +188,7 @@ function toggleFk(c: SchemaColumn) {
             class="shrink-0 justify-center"
             @click="submitColumns(t, ti)"
           >
-            {{ t.columns.length ? 'Spalten hinzufügen' : 'Spalten anlegen' }}
+            {{ t.columns.length ? tx.addColumns : tx.createColumns }}
           </UButton>
         </div>
 
@@ -198,7 +202,7 @@ function toggleFk(c: SchemaColumn) {
             color="neutral"
             variant="ghost"
             :disabled="ti === 0"
-            aria-label="Tabelle nach oben"
+            :aria-label="tx.tableUp"
             @click="moveTable(ti, -1)"
           />
           <UButton
@@ -207,7 +211,7 @@ function toggleFk(c: SchemaColumn) {
             color="neutral"
             variant="ghost"
             :disabled="ti === tables.length - 1"
-            aria-label="Tabelle nach unten"
+            :aria-label="tx.tableDown"
             @click="moveTable(ti, 1)"
           />
           <UButton
@@ -215,7 +219,7 @@ function toggleFk(c: SchemaColumn) {
             size="sm"
             color="error"
             variant="ghost"
-            aria-label="Tabelle löschen"
+            :aria-label="tx.deleteTable"
             @click="removeTable(ti)"
           />
         </div>
@@ -224,13 +228,13 @@ function toggleFk(c: SchemaColumn) {
         v-if="t.columns.length === 0"
         class="text-sm text-muted"
       >
-        Diese Tabelle hat noch keine Spalten. Tippe die Spaltennamen mit Komma getrennt ein und drücke Enter.
+        {{ tx.noColumnsYet }}
       </p>
       <p
         v-else-if="!disabled"
         class="text-xs text-muted"
       >
-        PK = Primärschlüssel, FK = Fremdschlüssel: unter dem Spaltennamen anklicken.
+        {{ tx.keyLegend }}
       </p>
 
       <div
@@ -250,10 +254,10 @@ function toggleFk(c: SchemaColumn) {
                     v-model="c.name"
                     :data-col-name="`${ti}-${ci}`"
                     size="sm"
-                    placeholder="Spaltenname"
+                    :placeholder="tx.columnName"
                     :disabled="disabled"
                     :maxlength="100"
-                    :aria-label="`Spaltenname ${ci + 1}`"
+                    :aria-label="tx.columnNameAria(ci + 1)"
                     :ui="{ base: c.pk ? 'font-bold underline' : 'font-medium' }"
                   />
                   <div class="flex items-center gap-0.5">
@@ -279,19 +283,19 @@ function toggleFk(c: SchemaColumn) {
                       <template #content>
                         <div class="p-3 flex flex-col gap-2 w-72 max-w-[calc(100vw-2rem)]">
                           <p class="text-sm font-medium">
-                            Fremdschlüssel „{{ c.name || '?' }}“
+                            {{ tx.foreignKey(c.name || '?') }}
                           </p>
                           <template v-if="c.fk">
                             <USelect
                               :model-value="c.fk.table || undefined"
                               :items="tableNames"
-                              placeholder="Tabelle"
+                              :placeholder="tx.table"
                               @update:model-value="setFkTable(c, $event as string)"
                             />
                             <USelect
                               :model-value="c.fk.column || undefined"
                               :items="columnsOf(c.fk.table)"
-                              placeholder="Spalte"
+                              :placeholder="tx.column"
                               :disabled="!c.fk.table"
                               @update:model-value="c.fk!.column = $event as string"
                             />
@@ -299,13 +303,13 @@ function toggleFk(c: SchemaColumn) {
                               <USelect
                                 :model-value="c.fk.cardinality"
                                 :items="cardinalityItems(t, c)"
-                                placeholder="Kardinalität"
+                                :placeholder="tx.cardinality"
                                 :disabled="!c.fk.table"
-                                aria-label="Kardinalität"
+                                :aria-label="tx.cardinality"
                                 @update:model-value="c.fk!.cardinality = $event as Cardinality"
                               />
                               <p class="text-xs text-muted">
-                                1 : n heißt: Zu einem Datensatz in „{{ c.fk.table || '?' }}“ gehören beliebig viele in „{{ t.name.trim() || 'dieser Tabelle' }}“.
+                                {{ tx.cardinalityHelp(c.fk.table || '?', t.name.trim() || tx.thisTable) }}
                               </p>
                             </template>
                           </template>
@@ -316,7 +320,7 @@ function toggleFk(c: SchemaColumn) {
                             block
                             @click="toggleFk(c)"
                           >
-                            {{ c.fk ? 'Kein Fremdschlüssel' : 'Als Fremdschlüssel markieren' }}
+                            {{ c.fk ? tx.noForeignKey : tx.markForeignKey }}
                           </UButton>
                         </div>
                       </template>
@@ -330,10 +334,10 @@ function toggleFk(c: SchemaColumn) {
                     <UDropdownMenu
                       v-if="!disabled"
                       :items="[[
-                        { label: 'Nach links', icon: 'i-lucide-arrow-left', disabled: ci === 0, onSelect: () => moveColumn(t, ci, -1) },
-                        { label: 'Nach rechts', icon: 'i-lucide-arrow-right', disabled: ci === t.columns.length - 1, onSelect: () => moveColumn(t, ci, 1) },
+                        { label: tx.moveLeft, icon: 'i-lucide-arrow-left', disabled: ci === 0, onSelect: () => moveColumn(t, ci, -1) },
+                        { label: tx.moveRight, icon: 'i-lucide-arrow-right', disabled: ci === t.columns.length - 1, onSelect: () => moveColumn(t, ci, 1) },
                       ], [
-                        { label: 'Spalte löschen', icon: 'i-lucide-trash-2', color: 'error', onSelect: () => removeColumn(t, ci) },
+                        { label: tx.deleteColumn, icon: 'i-lucide-trash-2', color: 'error', onSelect: () => removeColumn(t, ci) },
                       ]]"
                     >
                       <UButton
@@ -341,7 +345,7 @@ function toggleFk(c: SchemaColumn) {
                         size="xs"
                         color="neutral"
                         variant="ghost"
-                        aria-label="Spaltenaktionen"
+                        :aria-label="tx.columnActions"
                       />
                     </UDropdownMenu>
                   </div>
@@ -360,7 +364,7 @@ function toggleFk(c: SchemaColumn) {
                   :disabled="t.columns.length >= LIMITS.columns"
                   @click="addColumn(t); focus(`[data-col-name='${ti}-${t.columns.length - 1}']`)"
                 >
-                  Spalte
+                  {{ tx.addColumn }}
                 </UButton>
               </th>
             </tr>
@@ -380,7 +384,7 @@ function toggleFk(c: SchemaColumn) {
                   size="sm"
                   :disabled="disabled"
                   :maxlength="LIMITS.cell"
-                  :aria-label="`Zeile ${ri + 1}, ${t.columns[ci]?.name || `Spalte ${ci + 1}`}`"
+                  :aria-label="tx.cellAria(ri + 1, t.columns[ci]?.name || `${tx.column} ${ci + 1}`)"
                   class="w-full"
                   @keydown.enter.prevent="onCellEnter(t, ti, ri)"
                 />
@@ -391,7 +395,7 @@ function toggleFk(c: SchemaColumn) {
                   size="xs"
                   color="neutral"
                   variant="ghost"
-                  aria-label="Zeile löschen"
+                  :aria-label="tx.deleteRow"
                   @click="removeRow(t, ri)"
                 />
               </td>
@@ -410,7 +414,7 @@ function toggleFk(c: SchemaColumn) {
         :disabled="t.rows.length >= LIMITS.rows"
         @click="addRow(t); focus(`[data-cell='${ti}-${t.rows.length - 1}-0']`)"
       >
-        Zeile hinzufügen
+        {{ tx.addRow }}
       </UButton>
     </div>
 
@@ -422,7 +426,7 @@ function toggleFk(c: SchemaColumn) {
       :disabled="tables.length >= LIMITS.tables"
       @click="addTable"
     >
-      Tabelle hinzufügen
+      {{ tx.addTable }}
     </UButton>
   </div>
 </template>

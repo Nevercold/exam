@@ -94,7 +94,7 @@ function schemaTablesText(tables: SchemaTable[]): string {
     return [`Tabelle ${t.name.trim() || `${i + 1} (ohne Namen)`}: ${cols.join(', ')}`, ...(rows.length ? rows : ['  (keine Zeilen)'])].join('\n')
   })
   const rels = relationships(tables)
-  if (rels.length) parts.push(`Beziehungen: ${rels.map(relationshipText).join('; ')}`)
+  if (rels.length) parts.push(`Beziehungen: ${rels.map(r => relationshipText(r)).join('; ')}`)
   return parts.join('\n')
 }
 

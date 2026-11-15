@@ -175,12 +175,74 @@ watch(runsOpen, open => open && refreshRuns())
 const dateTime = new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' })
 const RUN_STATUS_LABELS = { waiting: 'wartet auf Start', running: 'läuft', ended: 'beendet' } as const
 
+// --- translations of the task texts ---
+const translating = ref<string | null>(null)
+const translationCodes = computed(() => Object.keys(state.value.translations ?? {}))
+const languageItems = computed(() => LANGUAGE_CODES
+  .filter(c => !translationCodes.value.includes(c))
+  .map(c => ({ label: `${languageName(c)} (${c})`, value: c }))
+  .sort((a, b) => a.label.localeCompare(b.label, 'de')))
+
+function addLanguage(code: string | undefined) {
+  if (!code) return
+  state.value.translations = { ...state.value.translations, [code]: { title: '', blocks: {} } }
+  translating.value = code
+  preview.value = false
+}
+
+function removeLanguage(code: string) {
+  const rest = Object.fromEntries(Object.entries(state.value.translations ?? {}).filter(([c]) => c !== code))
+  // No empty object: keeps exams without translations byte-identical to before
+  state.value.translations = Object.keys(rest).length ? rest : undefined
+  translating.value = null
+}
+
 // --- preview ---
 const previewContent = computed(() => {
   const r = examContentSchema.safeParse(state.value)
   return r.success ? toStudentContent(r.data) : null
 })
 const previewAnswers = ref<Answers>({})
+const previewTranslation = ref<string>('__off__')
+const previewEnglish = ref(false)
+const previewTranslationItems = computed(() => [
+  { label: 'Keine Übersetzung', value: '__off__' },
+  ...translationCodes.value.map(c => ({ label: languageName(c), value: c })),
+])
+function previewBlockTranslation(blockId: string) {
+  const code = previewTranslation.value
+  const text = code !== '__off__' ? previewContent.value?.translations?.[code]?.blocks[blockId] : undefined
+  return text ? { code, text } : null
+}
+
+// Export the preview (with whatever was typed into it) as the PDF students would get, marked "VORSCHAU"
+const exportingPreview = ref(false)
+async function exportPreview() {
+  const content = previewContent.value
+  if (!content) return
+  exportingPreview.value = true
+  try {
+    const submission: Submission = {
+      v: SUBMISSION_VERSION,
+      runId: 'vorschau',
+      examTitle: content.title,
+      name: 'Vorschau',
+      answers: sanitizeAnswers(content.blocks, previewAnswers.value),
+      exportedAt: new Date().toISOString(),
+      ...(previewTranslation.value !== '__off__' ? { translation: previewTranslation.value } : {}),
+    }
+    const hash = await hashSubmission(submission)
+    const blob = await createSubmissionPdf({ content, submission, envelope: null, hash, preview: true })
+    downloadBlob(blob, pdfFilename(content.title, 'Vorschau'))
+  }
+  catch (err) {
+    console.error(err)
+    toast.add({ title: 'PDF konnte nicht erstellt werden', color: 'error' })
+  }
+  finally {
+    exportingPreview.value = false
+  }
+}
 </script>
 
 <template>
@@ -301,6 +363,43 @@ const previewAnswers = ref<Answers>({})
             Geteilt von {{ data!.owner.name }}
           </p>
 
+          <div class="flex flex-col gap-2">
+            <p class="text-sm font-medium">
+              Übersetzungen der Aufgaben
+            </p>
+            <div
+              v-if="translationCodes.length"
+              class="flex flex-wrap gap-1.5"
+            >
+              <UButton
+                v-for="code in translationCodes"
+                :key="code"
+                size="xs"
+                icon="i-lucide-languages"
+                :variant="translating === code ? 'solid' : 'soft'"
+                :color="translating === code ? 'primary' : 'neutral'"
+                @click="translating = code; preview = false"
+              >
+                {{ languageName(code) }}
+              </UButton>
+            </div>
+            <USelectMenu
+              v-if="!readonly && translationCodes.length < MAX_TRANSLATIONS"
+              :items="languageItems"
+              value-key="value"
+              placeholder="Sprache hinzufügen …"
+              :search-input="{ placeholder: 'Sprache suchen' }"
+              icon="i-lucide-plus"
+              size="sm"
+              class="w-full"
+              :model-value="undefined"
+              @update:model-value="addLanguage($event as string | undefined)"
+            />
+            <p class="text-xs text-muted">
+              Schüler können eine Übersetzung selbst einschalten; sie steht unter dem deutschen Text.
+            </p>
+          </div>
+
           <ul
             v-if="warnings.length"
             class="text-sm flex flex-col gap-1 rounded-lg bg-warning/10 p-3"
@@ -343,8 +442,8 @@ const previewAnswers = ref<Answers>({})
               v-for="(block, i) in state.blocks"
               :key="block.id"
               class="group flex items-center gap-2 rounded-lg px-2 py-1.5 cursor-pointer"
-              :class="selected === i && !preview ? 'bg-elevated' : 'hover:bg-elevated/50'"
-              @click="selected = i; preview = false"
+              :class="selected === i && !preview && !translating ? 'bg-elevated' : 'hover:bg-elevated/50'"
+              @click="selected = i; preview = false; translating = null"
             >
               <span class="text-xs text-muted w-5 text-right tabular-nums">{{ i + 1 }}</span>
               <UIcon
@@ -383,9 +482,38 @@ const previewAnswers = ref<Answers>({})
               color="info"
               variant="subtle"
               title="Vorschau aus Sicht der Schüler (ohne Lösungen)"
-              description="Eingaben hier werden nicht gespeichert."
-              class="mb-6"
+              description="Eingaben hier werden nicht gespeichert. Mit „Als PDF exportieren“ siehst du das PDF, das Schüler damit abgeben würden."
+              class="mb-4"
             />
+            <div
+              v-if="previewContent"
+              class="flex flex-wrap items-center gap-3 mb-6"
+            >
+              <USelect
+                v-if="translationCodes.length"
+                v-model="previewTranslation"
+                :items="previewTranslationItems"
+                icon="i-lucide-languages"
+                size="sm"
+                class="w-56"
+                aria-label="Übersetzung in der Vorschau"
+              />
+              <USwitch
+                v-model="previewEnglish"
+                label="Oberfläche auf Englisch"
+                size="sm"
+              />
+              <span class="flex-1" />
+              <UButton
+                icon="i-lucide-file-down"
+                size="sm"
+                variant="soft"
+                :loading="exportingPreview"
+                @click="exportPreview"
+              >
+                Als PDF exportieren
+              </UButton>
+            </div>
             <div
               v-if="previewContent"
               class="flex flex-col gap-8"
@@ -399,6 +527,8 @@ const previewAnswers = ref<Answers>({})
                 v-model:answers="previewAnswers"
                 :block="block"
                 :blocks="previewContent.blocks"
+                :lang="previewEnglish ? 'en' : 'de'"
+                :translation="previewBlockTranslation(block.id)"
               />
             </div>
             <p
@@ -408,6 +538,16 @@ const previewAnswers = ref<Answers>({})
               Die Prüfung enthält noch Fehler. Speichere, um sie angezeigt zu bekommen.
             </p>
           </template>
+          <BlocksTranslationEditor
+            v-else-if="translating && state.translations?.[translating]"
+            :key="translating"
+            :model-value="state.translations[translating]!"
+            :content="state"
+            :code="translating"
+            :disabled="readonly"
+            @update:model-value="state.translations![translating!] = $event"
+            @remove="removeLanguage(translating)"
+          />
           <template v-else-if="current">
             <div class="flex items-center gap-2 mb-4 text-sm text-muted">
               <UIcon :name="BLOCK_ICONS[current.type]" />

@@ -144,6 +144,11 @@ test/               Vitest unit tests (pure logic, no Nuxt context)
   both before trusting a new provider.
 - A literal BOM (`﻿`) in a template string becomes an invisible character after `lint:fix` and then fails
   `no-irregular-whitespace`: use `String.fromCharCode(0xFEFF)`.
+- The auto-import scanner also missed `export`s placed after the big dictionary objects in `app/utils/ui-text.ts`.
+  Keep helper exports above them; if something is "not found", run `pnpm exec nuxt prepare` and grep
+  `.nuxt/imports.d.ts`.
+- Student UI texts live in `app/utils/ui-text.ts` (German + English, same keys, tested). Components shared with
+  teacher pages take a `lang` prop that defaults to German; only student pages pass the student's choice.
 - Student forms: check the Tab order by actually typing. In the table editor, Tab from the table name used to land
   on "Tabelle löschen" and the next Enter deleted the table. DOM order = tab order; place actions visually with
   grid/order instead, and make destructive one-click actions undoable (toast with "Rückgängig").

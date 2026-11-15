@@ -22,7 +22,7 @@ const orders = (card: Cardinality | null = '1:n'): SchemaTable[] => [
 
 describe('relationships', () => {
   it('derives one relationship per foreign key', () => {
-    expect(relationships(orders()).map(relationshipText)).toEqual([
+    expect(relationships(orders()).map(r => relationshipText(r))).toEqual([
       'Abteilung 1 : n Bestellung (über Bestellung.AbteilungNr)',
       'Lieferant 1 : n Bestellung (über Bestellung.LieferantNr)',
       'Bestellung 1 : n Bestellposition (über Bestellposition.BestellNr)',
@@ -135,7 +135,7 @@ describe('copyFrom', () => {
     const source = orders()
     const copy = copySchemaTables(source)
     expect(copy).toEqual(source)
-    expect(relationships(copy).map(relationshipText)).toEqual(relationships(source).map(relationshipText))
+    expect(relationships(copy).map(r => relationshipText(r))).toEqual(relationships(source).map(r => relationshipText(r)))
     copy[0]!.columns[2]!.fk!.cardinality = '1:1'
     expect(source[0]!.columns[2]!.fk!.cardinality).toBe('1:n')
   })

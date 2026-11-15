@@ -8,7 +8,8 @@ const pin = route.params.pin as string
 
 // Full-width page instead of the centered default layout; still no heavy components
 definePageMeta({ layout: false })
-useHead({ title: 'Prüfung · exam' })
+const { ui, t, translation } = useStudentLanguage()
+useHead({ title: () => `${t.value.exam} · exam` })
 
 type JoinResponse = { runId: string, endsAt: string | null, serverNow: string, content: StudentContent }
 type JoinResult = { status: 'waiting', runId: string } | ({ status: 'running' } & JoinResponse)
@@ -74,7 +75,7 @@ async function load() {
       // Network hiccup while waiting: keep waiting; a cancelled run shows the error on 404
       if ((err as { statusCode?: number })?.statusCode === 404) {
         waiting.value = false
-        loadError.value = 'Die Prüfung wurde abgebrochen.'
+        loadError.value = t.value.cancelled
       }
       else {
         waitTimer = setTimeout(load, 5000)
@@ -82,7 +83,7 @@ async function load() {
       return
     }
     else {
-      loadError.value = errorMessage(err, 'Die Prüfung konnte nicht geladen werden.')
+      loadError.value = errorMessage(err, t.value.loadFailed)
     }
   }
   finally {
@@ -151,19 +152,32 @@ watch([name, answers], () => {
 // --- countdown ---
 const { label: remaining, remainingMs, expired } = useCountdown(() => run.value?.endsAt, () => run.value?.serverNow)
 const lowTime = computed(() => remainingMs.value !== null && remainingMs.value < 5 * 60_000)
-const timeFormat = new Intl.DateTimeFormat('de-DE', { timeStyle: 'short' })
+const timeFormat = computed(() => new Intl.DateTimeFormat(uiLocale(ui.value), { timeStyle: 'short' }))
 
 // After the end, PDFs are still signed during the grace period
 const signUntil = computed(() => serverSignUntil.value
   ?? (run.value?.endsAt ? new Date(new Date(run.value.endsAt).getTime() + SIGN_GRACE_MS) : null))
 const endedText = computed(() => signUntil.value && signUntil.value > new Date()
-  ? `Exportiere jetzt dein PDF: Es wird noch bis ${timeFormat.format(signUntil.value)} Uhr signiert.`
-  : 'PDFs, die du jetzt erstellst, sind nicht mehr signiert.')
+  ? t.value.endedSignUntil(timeFormat.value.format(signUntil.value))
+  : t.value.endedUnsigned)
+
+// --- task translation (off unless the student switches it on; only languages this exam has) ---
+const translationCodes = computed(() => Object.keys(run.value?.content.translations ?? {}))
+const activeTranslation = computed(() => (translation.value && translationCodes.value.includes(translation.value) ? translation.value : null))
+function blockTranslation(blockId: string) {
+  const code = activeTranslation.value
+  const text = code ? run.value?.content.translations?.[code]?.blocks[blockId] : undefined
+  return code && text ? { code, text } : null
+}
+const titleTranslation = computed(() => {
+  const code = activeTranslation.value
+  return code ? run.value?.content.translations?.[code]?.title.trim() || null : null
+})
 
 // --- export ---
 const nameError = computed(() => {
-  const r = studentNameSchema.safeParse(name.value)
-  return r.success ? undefined : r.error.issues[0]?.message
+  if (studentNameSchema.safeParse(name.value).success) return undefined
+  return name.value.trim().length > 100 ? t.value.nameTooLong : t.value.nameTooShort
 })
 const nameTouched = ref(false)
 const exporting = ref(false)
@@ -174,9 +188,9 @@ const missingCardinalities = computed(() => (run.value?.content.blocks ?? []).fl
   if (b.type !== 'schema-answer' || !b.askCardinality) return []
   const tables = answers.value[b.id]
   if (!Array.isArray(tables)) return []
-  return tables.flatMap(t => t.columns
+  return tables.flatMap(table => table.columns
     .filter(c => c.fk && !c.fk.cardinality)
-    .map(c => `${b.label || 'Tabellen'}: ${t.name.trim() || '?'}.${c.name.trim() || '?'} → ${c.fk!.table || '?'}`))
+    .map(c => `${b.label || t.value.tables}: ${table.name.trim() || '?'}.${c.name.trim() || '?'} → ${c.fk!.table || '?'}`))
 }))
 const confirmMissing = ref(false)
 
@@ -200,6 +214,8 @@ async function exportPdf(force = false) {
       name: name.value.trim(),
       answers: sanitizeAnswers(run.value.content.blocks, answers.value),
       exportedAt: new Date().toISOString(),
+      // Noted on the PDF so the teacher knows a translation was shown
+      ...(activeTranslation.value ? { translation: activeTranslation.value } : {}),
     }
     const hash = await hashSubmission(submission)
 
@@ -209,8 +225,8 @@ async function exportPdf(force = false) {
     }
     catch (err) {
       toast.add({
-        title: 'PDF wird ohne Signatur erstellt',
-        description: errorMessage(err, 'Der Server ist nicht erreichbar.'),
+        title: t.value.unsignedToast,
+        description: errorMessage(err, t.value.serverUnreachable),
         color: 'warning',
         icon: 'i-lucide-shield-off',
         duration: 10_000,
@@ -223,7 +239,7 @@ async function exportPdf(force = false) {
   }
   catch (err) {
     console.error(err)
-    toast.add({ title: 'PDF konnte nicht erstellt werden', description: 'Bitte erneut versuchen.', color: 'error' })
+    toast.add({ title: t.value.pdfFailed, description: t.value.tryAgain, color: 'error' })
   }
   finally {
     exporting.value = false
@@ -241,8 +257,9 @@ async function exportPdf(force = false) {
           class="shrink-0"
         />
         <p class="flex-1 min-w-0 font-semibold truncate">
-          {{ run?.content.title ?? 'Prüfung' }}
+          {{ run?.content.title ?? t.exam }}
         </p>
+        <StudentLanguageMenu :translations="translationCodes" />
         <UBadge
           v-if="endedByTeacher || remaining !== null"
           :color="endedByTeacher || expired ? 'error' : lowTime ? 'warning' : 'neutral'"
@@ -251,7 +268,7 @@ async function exportPdf(force = false) {
           :icon="endedByTeacher || expired ? 'i-lucide-timer-off' : 'i-lucide-timer'"
           class="tabular-nums shrink-0"
         >
-          {{ endedByTeacher && !expired ? 'Beendet' : expired ? 'Zeit abgelaufen' : remaining }}
+          {{ endedByTeacher && !expired ? t.ended : expired ? t.timeUp : remaining }}
         </UBadge>
         <UButton
           v-if="run"
@@ -260,7 +277,7 @@ async function exportPdf(force = false) {
           class="shrink-0"
           @click="exportPdf()"
         >
-          <span class="hidden sm:inline">PDF exportieren</span>
+          <span class="hidden sm:inline">{{ t.exportPdf }}</span>
         </UButton>
       </div>
     </header>
@@ -286,10 +303,10 @@ async function exportPdf(force = false) {
           class="size-12 animate-spin text-primary"
         />
         <p class="text-xl font-semibold">
-          Gleich geht's los
+          {{ t.waitingTitle }}
         </p>
         <p class="text-muted max-w-xs">
-          Die Prüfung erscheint automatisch, sobald deine Lehrkraft sie startet. Lass diese Seite geöffnet.
+          {{ t.waitingText }}
         </p>
       </div>
 
@@ -307,7 +324,7 @@ async function exportPdf(force = false) {
             to="/"
             variant="soft"
           >
-            Andere PIN eingeben
+            {{ t.otherPin }}
           </UButton>
         </div>
       </UCard>
@@ -318,22 +335,35 @@ async function exportPdf(force = false) {
           icon="i-lucide-wifi-off"
           color="warning"
           variant="subtle"
-          title="Prüfung beendet oder Server nicht erreichbar"
-          :description="`Du kannst weiterarbeiten. Signiert wird nur bis ${SIGN_GRACE_MS / 60_000} Minuten nach Prüfungsende und mit Verbindung zum Server; nach dem Export siehst du, ob dein PDF signiert ist.`"
-          :actions="[{ label: 'Erneut verbinden', icon: 'i-lucide-refresh-cw', onClick: load }]"
+          :title="t.offlineTitle"
+          :description="t.offlineText(SIGN_GRACE_MS / 60_000)"
+          :actions="[{ label: t.reconnect, icon: 'i-lucide-refresh-cw', onClick: load }]"
         />
         <UAlert
           v-else-if="expired || endedByTeacher"
           icon="i-lucide-timer-off"
           color="error"
           variant="subtle"
-          :title="endedByTeacher && !expired ? 'Die Prüfung wurde beendet' : 'Die Zeit ist abgelaufen'"
+          :title="endedByTeacher && !expired ? t.endedByTeacher : t.timeIsUp"
           :description="endedText"
         />
 
+        <div v-if="titleTranslation">
+          <h1 class="text-2xl font-bold">
+            {{ run.content.title }}
+          </h1>
+          <p
+            class="text-info"
+            :lang="activeTranslation!"
+            :dir="isRtl(activeTranslation!) ? 'rtl' : 'ltr'"
+          >
+            {{ titleTranslation }}
+          </p>
+        </div>
+
         <UFormField
-          label="Dein Name"
-          description="Vor- und Nachname, steht auf deinem PDF"
+          :label="t.yourName"
+          :description="t.yourNameHelp"
           :error="nameTouched ? nameError : undefined"
           required
           :ui="{ label: 'font-semibold text-highlighted' }"
@@ -355,19 +385,17 @@ async function exportPdf(force = false) {
           v-model:answers="answers"
           :block="block"
           :blocks="run.content.blocks"
+          :lang="ui"
+          :translation="blockTranslation(block.id)"
         />
 
         <UCard class="mt-4">
           <div class="flex flex-col gap-3">
             <h2 class="font-semibold text-highlighted">
-              Abgabe
+              {{ t.submission }}
             </h2>
             <p class="text-sm text-muted">
-              Erstelle am Ende ein PDF und lade es selbst in der Schulcloud hoch. Du kannst mehrmals exportieren;
-              es zählt das zuletzt hochgeladene PDF. Signiert wird während der Prüfung und bis
-              {{ SIGN_GRACE_MS / 60_000 }} Minuten nach ihrem Ende<template v-if="signUntil">
-                (bis {{ timeFormat.format(signUntil) }} Uhr)
-              </template>.
+              {{ t.submissionText(SIGN_GRACE_MS / 60_000, signUntil ? timeFormat.format(signUntil) : null) }}
             </p>
             <UButton
               icon="i-lucide-file-down"
@@ -376,21 +404,21 @@ async function exportPdf(force = false) {
               :loading="exporting"
               @click="exportPdf()"
             >
-              PDF exportieren
+              {{ t.exportPdf }}
             </UButton>
             <UAlert
               v-if="lastExport"
               :icon="lastExport.signed ? 'i-lucide-shield-check' : 'i-lucide-shield-off'"
               :color="lastExport.signed ? 'success' : 'warning'"
               variant="subtle"
-              :title="lastExport.signed ? 'Signiertes PDF erstellt' : 'PDF ohne Signatur erstellt'"
-              :description="`Prüfcode ${lastExport.code} · ${timeFormat.format(lastExport.at)} Uhr. Jetzt in der Schulcloud hochladen.`"
+              :title="lastExport.signed ? t.signedCreated : t.unsignedCreated"
+              :description="t.exportedInfo(lastExport.code, timeFormat.format(lastExport.at))"
             />
             <p
               v-if="lastSaved"
               class="text-xs text-muted"
             >
-              Zwischengespeichert in diesem Browser um {{ timeFormat.format(lastSaved) }} Uhr
+              {{ t.savedLocally(timeFormat.format(lastSaved)) }}
             </p>
           </div>
         </UCard>
@@ -399,8 +427,8 @@ async function exportPdf(force = false) {
 
     <UModal
       v-model:open="confirmMissing"
-      title="Kardinalitäten fehlen"
-      description="Bei diesen Fremdschlüsseln fehlt noch die Angabe 1:1 oder 1:n. Du kannst sie ergänzen oder trotzdem exportieren."
+      :title="t.missingCardTitle"
+      :description="t.missingCardText"
     >
       <template #body>
         <ul class="text-sm flex flex-col gap-1 list-disc pl-5">
@@ -419,14 +447,14 @@ async function exportPdf(force = false) {
             variant="ghost"
             @click="confirmMissing = false"
           >
-            Ergänzen
+            {{ t.complete }}
           </UButton>
           <UButton
             color="warning"
             icon="i-lucide-file-down"
             @click="exportPdf(true)"
           >
-            Trotzdem exportieren
+            {{ t.exportAnyway }}
           </UButton>
         </div>
       </template>

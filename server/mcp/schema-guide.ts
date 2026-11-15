@@ -24,6 +24,12 @@ type Block =
       maxLength: number | null, points?: number,
       solution: string | null }                                   // solution = expected reasoning
 
+// Optional on ExamContent: translations of the task texts, keyed by BCP 47 code ("uk", "ar", "pt-BR"; not "de").
+// Students can switch one on; it is shown below the German original. Answers and the PDF stay German.
+// blocks: one string per block id: text → Markdown, table → caption, schema-answer/freetext → label.
+// Table contents and solutions are never translated. Max. 10 languages. Omit the field if there are none.
+type Translations = Record<string, { title: string, blocks: Record<string, string> }>
+
 type SchemaTable = {
   name: string
   columns: { name: string, pk: boolean, fk: ForeignKey | null }[]

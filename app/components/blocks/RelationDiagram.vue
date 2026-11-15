@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // Relational model as a diagram (boxes, lines with 1/n) plus the relationships as text.
 // Text is rendered through the template (escaped); the PDF uses diagramSvg() with the same layout.
-const props = defineProps<{ tables: SchemaTable[] }>()
+const props = defineProps<{ tables: SchemaTable[], lang?: UiLang }>()
+const tx = computed(() => UI_TEXT[props.lang ?? 'de'])
 
 const layout = computed(() => diagramLayout(props.tables))
 const rels = computed(() => relationships(props.tables))
@@ -19,7 +20,7 @@ const rels = computed(() => relationships(props.tables))
         :viewBox="`0 0 ${layout.width} ${layout.height}`"
         class="block mx-auto"
         role="img"
-        aria-label="Relationenmodell"
+        :aria-label="tx.relationalModel"
         font-family="inherit"
       >
         <g
@@ -95,13 +96,13 @@ const rels = computed(() => relationships(props.tables))
     </div>
     <div class="text-sm">
       <p class="font-medium mb-1">
-        Beziehungen
+        {{ tx.relationships }}
       </p>
       <p
         v-if="rels.length === 0"
         class="text-muted italic"
       >
-        Noch keine Fremdschlüssel, daher keine Beziehungen
+        {{ tx.noRelationships }}
       </p>
       <ul
         v-else
@@ -112,7 +113,7 @@ const rels = computed(() => relationships(props.tables))
           :key="i"
           :class="{ 'text-warning': !r.cardinality }"
         >
-          {{ relationshipText(r) }}
+          {{ relationshipText(r, lang) }}
         </li>
       </ul>
     </div>

@@ -70,11 +70,12 @@ export function relationships(tables: SchemaTable[]): Relationship[] {
 
 const CARDINALITY_SIDES: Record<Cardinality, string> = { '1:1': '1 : 1', '1:n': '1 : n' }
 
-/** "Abteilung 1 : n Bestellung (über Bestellung.AbteilungNr)" */
-export function relationshipText(r: Relationship): string {
+/** "Abteilung 1 : n Bestellung (über Bestellung.AbteilungNr)"; English: "(via …, cardinality missing)" */
+export function relationshipText(r: Relationship, lang: 'de' | 'en' = 'de'): string {
   const via = r.columns.map(c => `${r.childName || '?'}.${c || '?'}`).join(', ')
   const card = r.cardinality ? CARDINALITY_SIDES[r.cardinality] : '?'
-  return `${r.parentName || '?'} ${card} ${r.childName || '?'} (über ${via}${r.cardinality ? '' : ', Kardinalität fehlt'})`
+  const [over, missing] = lang === 'en' ? ['via', 'cardinality missing'] : ['über', 'Kardinalität fehlt']
+  return `${r.parentName || '?'} ${card} ${r.childName || '?'} (${over} ${via}${r.cardinality ? '' : `, ${missing}`})`
 }
 
 // ---------- Diagram layout ----------

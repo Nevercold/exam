@@ -1,6 +1,6 @@
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces'
 import type { SchemaTable, StudentContent } from '../../shared/utils/exam'
-import { pointsLabel } from '../../shared/utils/exam'
+import { languageName, pointsLabel } from '../../shared/utils/exam'
 import { diagramLayout, diagramSvg, relationships, relationshipText } from '../../shared/utils/relations'
 import { embeddedSubmissionSchema, PDF_INFO_KEY, verificationCode, type EmbeddedSubmission, type SignedEnvelope, type Submission } from '../../shared/utils/submission'
 
@@ -69,9 +69,12 @@ export function buildDocDefinition(opts: {
   submission: Submission
   envelope: SignedEnvelope | null
   hash: string
+  /** Teacher's preview from the editor: marked as such instead of "not signed" */
+  preview?: boolean
 }): TDocumentDefinitions {
-  const { content, submission, envelope, hash } = opts
+  const { content, submission, envelope, hash, preview } = opts
   const code = verificationCode(hash)
+  const mark = preview ? 'VORSCHAU' : 'NICHT SIGNIERT'
 
   const body: Content[] = [
     { text: content.title, style: 'title' },
@@ -84,7 +87,11 @@ export function buildDocDefinition(opts: {
           ['Prüfcode', { text: code, font: 'Roboto', bold: true }],
           ['Signatur', envelope
             ? { text: `signiert am ${dateTime.format(new Date(envelope.payload.signedAt))}`, color: '#047857' }
-            : { text: 'NICHT SIGNIERT (erstellt außerhalb der Prüfungszeit oder ohne Verbindung)', color: '#b91c1c', bold: true }],
+            : preview
+              ? { text: 'VORSCHAU aus dem Editor (keine Abgabe, nicht signiert)', color: '#b91c1c', bold: true }
+              : { text: 'NICHT SIGNIERT (erstellt außerhalb der Prüfungszeit oder ohne Verbindung)', color: '#b91c1c', bold: true }],
+          // The PDF stays German; this tells the teacher a translation of the tasks was shown
+          ...(submission.translation ? [['Übersetzung', `Aufgaben angezeigt mit Übersetzung: ${languageName(submission.translation)}`]] : []),
         ],
       },
       layout: 'noBorders',
@@ -121,13 +128,13 @@ export function buildDocDefinition(opts: {
     pageOrientation: maxColumns > WIDE_TABLE_COLUMNS ? 'landscape' : 'portrait',
     pageMargins: [40, 50, 40, 50],
     info: { title: `${content.title} – ${submission.name}`, author: submission.name, creator: 'exam' },
-    watermark: envelope ? undefined : { text: 'NICHT SIGNIERT', color: '#b91c1c', opacity: 0.12, bold: true },
+    watermark: envelope ? undefined : { text: mark, color: '#b91c1c', opacity: 0.12, bold: true },
     header: (page: number) => page > 1
       ? { text: `${content.title} – ${submission.name}`, fontSize: 8, color: '#71717a', margin: [40, 20, 40, 0] }
       : null,
     footer: (page: number, pages: number) => ({
       columns: [
-        { text: envelope ? `Prüfcode ${code}` : `Prüfcode ${code} · NICHT SIGNIERT`, color: envelope ? '#71717a' : '#b91c1c' },
+        { text: envelope ? `Prüfcode ${code}` : `Prüfcode ${code} · ${mark}`, color: envelope ? '#71717a' : '#b91c1c' },
         { text: `Seite ${page} von ${pages}`, alignment: 'right' },
       ],
       fontSize: 8,
