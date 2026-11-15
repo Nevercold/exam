@@ -66,6 +66,9 @@ and a read-only view (preview, verification page).
   on themselves (off by default); it is shown below the German text (RTL for Arabic etc.). The student interface
   itself is German or English. Answers and the PDF stay German; the PDF notes which translation was shown.
 - The editor preview can be exported as a PDF (watermark "VORSCHAU").
+- **Leaving the page** (other tab/window, `useFocusLog`): counted only while the exam is running, not during the
+  PDF export; students see a notice. Count + duration go into the signed submission, the PDF, the verification
+  page and the CSV. An indication, not proof (measured in the student's browser).
 - Both answer blocks have optional `points` (max., shown to students and in the PDF). The verification page checks many PDFs at once
   (overview, duplicates skipped, CSV for the grade book) and, if `NUXT_AI_*` is configured, asks an
   OpenAI-compatible API (Hetzner Inference) for a points suggestion + comment per block. Sent without the name,

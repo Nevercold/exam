@@ -2,7 +2,7 @@ import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces'
 import type { SchemaTable, StudentContent } from '../../shared/utils/exam'
 import { languageName, pointsLabel } from '../../shared/utils/exam'
 import { diagramLayout, diagramSvg, relationships, relationshipText } from '../../shared/utils/relations'
-import { embeddedSubmissionSchema, PDF_INFO_KEY, verificationCode, type EmbeddedSubmission, type SignedEnvelope, type Submission } from '../../shared/utils/submission'
+import { embeddedSubmissionSchema, focusSummary, PDF_INFO_KEY, verificationCode, type EmbeddedSubmission, type SignedEnvelope, type Submission } from '../../shared/utils/submission'
 
 // Builds the student's PDF in the browser. pdfmake and pdf-lib are loaded lazily (large bundles,
 // slow school Wi-Fi). The submission JSON + signature are embedded in the PDF info dictionary so the
@@ -131,6 +131,11 @@ export function buildDocDefinition(opts: {
               : { text: 'NICHT SIGNIERT (erstellt außerhalb der Prüfungszeit oder ohne Verbindung)', color: '#b91c1c', bold: true }],
           // The PDF stays German; this tells the teacher a translation of the tasks was shown
           ...(submission.translation ? [['Übersetzung', `Aufgaben angezeigt mit Übersetzung: ${languageName(submission.translation)}`]] : []),
+          ...(submission.focus && !preview
+            ? [['Seite verlassen', submission.focus.left
+                ? { text: `${focusSummary(submission.focus)} (während der Prüfung)`, color: '#b45309' }
+                : 'nicht verlassen (während der Prüfung)']]
+            : []),
         ],
       },
       layout: 'noBorders',

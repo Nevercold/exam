@@ -194,6 +194,16 @@ const missingCardinalities = computed(() => (run.value?.content.blocks ?? []).fl
 }))
 const confirmMissing = ref(false)
 
+// --- leaving the page during the exam (noted on the PDF; the student is told so on the page) ---
+// The save dialog of the PDF download takes the focus: don't count it
+let pauseFocusUntil = 0
+const examRunning = computed(() => !!run.value && !waiting.value && !expired.value && !endedByTeacher.value)
+const { snapshot: focusSnapshot } = useFocusLog({
+  runId: () => run.value?.runId ?? null,
+  active: () => examRunning.value,
+  paused: () => exporting.value || Date.now() < pauseFocusUntil,
+})
+
 async function exportPdf(force = false) {
   nameTouched.value = true
   if (!run.value || nameError.value) {
@@ -216,6 +226,7 @@ async function exportPdf(force = false) {
       exportedAt: new Date().toISOString(),
       // Noted on the PDF so the teacher knows a translation was shown
       ...(activeTranslation.value ? { translation: activeTranslation.value } : {}),
+      focus: focusSnapshot(),
     }
     const hash = await hashSubmission(submission)
 
@@ -243,6 +254,7 @@ async function exportPdf(force = false) {
   }
   finally {
     exporting.value = false
+    pauseFocusUntil = Date.now() + 5_000
   }
 }
 </script>
@@ -378,6 +390,13 @@ async function exportPdf(force = false) {
             @blur="nameTouched = true"
           />
         </UFormField>
+        <p class="-mt-4 flex gap-2 text-sm text-muted">
+          <UIcon
+            name="i-lucide-eye"
+            class="size-4 shrink-0 mt-0.5"
+          />
+          {{ t.focusNotice }}
+        </p>
 
         <BlocksStudentBlock
           v-for="block in run.content.blocks"

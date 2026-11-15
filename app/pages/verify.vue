@@ -132,7 +132,7 @@ function exportCsv() {
   const blockCols = done.find(r => r.grading.result)?.grading.result?.blocks.filter(b => b.maxPoints !== null) ?? []
   // Leading = + - @ would be read as a formula by spreadsheet apps
   const esc = (v: string) => `"${(/^[=+\-@]/.test(v) ? `'${v}` : v).replace(/"/g, '""')}"`
-  const header = ['Name', 'Datei', 'Signatur', 'Prüfcode', ...blockCols.map(b => `${b.label} (max. ${formatPoints(b.maxPoints!)})`), 'KI-Punkte', 'Maximal']
+  const header = ['Name', 'Datei', 'Signatur', 'Prüfcode', 'Seite verlassen', ...blockCols.map(b => `${b.label} (max. ${formatPoints(b.maxPoints!)})`), 'KI-Punkte', 'Maximal']
   const lines = done.map((r) => {
     const g = r.grading.result
     return [
@@ -140,6 +140,7 @@ function exportCsv() {
       r.fileName,
       verdictOf(r).title,
       r.code,
+      r.embedded.submission.focus ? focusSummary(r.embedded.submission.focus) : '',
       ...blockCols.map((b) => {
         const p = g?.blocks.find(x => x.id === b.id)?.points
         return p === null || p === undefined ? '' : formatPoints(p)
@@ -312,6 +313,9 @@ const asText = (v: unknown) => (typeof v === 'string' ? v : '')
                   <th class="px-4 py-2 font-medium hidden sm:table-cell">
                     Prüfcode
                   </th>
+                  <th class="px-4 py-2 font-medium">
+                    Verlassen
+                  </th>
                   <th
                     v-if="ai?.enabled"
                     class="px-4 py-2 font-medium"
@@ -364,6 +368,19 @@ const asText = (v: unknown) => (typeof v === 'string' ? v : '')
                   </td>
                   <td class="px-4 py-2 font-mono hidden sm:table-cell">
                     {{ item.result?.code }}
+                  </td>
+                  <td class="px-4 py-2 whitespace-nowrap">
+                    <span
+                      v-if="item.result?.embedded.submission.focus"
+                      :class="item.result.embedded.submission.focus.left ? 'text-warning font-medium' : 'text-muted'"
+                      :title="focusSummary(item.result.embedded.submission.focus)"
+                    >
+                      <UIcon
+                        name="i-lucide-eye-off"
+                        class="size-3.5 align-[-2px]"
+                      />
+                      {{ item.result.embedded.submission.focus.left }}×
+                    </span>
                   </td>
                   <td
                     v-if="ai?.enabled"
@@ -440,6 +457,15 @@ const asText = (v: unknown) => (typeof v === 'string' ? v : '')
                   Übersetzung
                 </dt>
                 <dd>Aufgaben mit Übersetzung angezeigt: {{ languageName(result.embedded.submission.translation) }}</dd>
+              </template>
+              <template v-if="result.embedded.submission.focus">
+                <dt class="text-muted">
+                  Seite verlassen
+                </dt>
+                <dd :class="{ 'text-warning font-medium': result.embedded.submission.focus.left }">
+                  {{ focusSummary(result.embedded.submission.focus) }}
+                  <span class="text-muted font-normal">(während der Prüfung, im Browser gemessen: ein Hinweis, kein Beweis)</span>
+                </dd>
               </template>
               <dt class="text-muted">
                 Prüfcode

@@ -20,9 +20,24 @@ export const submissionSchema = z.object({
   // Language of the task translation the student had switched on (part of the hash). Optional without default:
   // parsing must return exactly what was hashed, also for PDFs from before this field existed.
   translation: z.string().max(35).optional(),
+  // How often the student left the exam page while the exam was running (other tab or window) and for how long.
+  // Recorded in the browser, so it's an indication, not proof. Optional without default, like `translation`.
+  focus: z.object({
+    left: z.number().int().min(0).max(100_000),
+    awayMs: z.number().int().min(0).max(30 * 24 * 3_600_000),
+  }).optional(),
 })
 
 export type Submission = z.infer<typeof submissionSchema>
+
+/** "nicht verlassen" / "1× verlassen, insgesamt 12 Sek." / "6× verlassen, insgesamt 4 Min. 12 Sek." */
+export function focusSummary(focus: { left: number, awayMs: number }): string {
+  if (focus.left === 0) return 'nicht verlassen'
+  const s = Math.round(focus.awayMs / 1000)
+  const m = Math.floor(s / 60)
+  const duration = m ? `${m} Min.${s % 60 ? ` ${s % 60} Sek.` : ''}` : `${s} Sek.`
+  return `${focus.left}× verlassen, insgesamt ${duration}`
+}
 
 export const signaturePayloadSchema = z.object({
   v: z.literal(SUBMISSION_VERSION),

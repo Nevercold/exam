@@ -4,7 +4,7 @@ import { UI_TEXT } from '../app/utils/ui-text'
 import { examContentSchema, examWarnings, isRtl, languageName, pointsLabel, toStudentContent } from '../shared/utils/exam'
 import { schemaHints } from '../shared/utils/hints'
 import { relationships, relationshipText } from '../shared/utils/relations'
-import { canonicalJson, embeddedSubmissionSchema, hashSubmission, type Submission } from '../shared/utils/submission'
+import { canonicalJson, embeddedSubmissionSchema, focusSummary, hashSubmission, type Submission } from '../shared/utils/submission'
 
 const base = {
   title: 'Normalisierung',
@@ -99,6 +99,21 @@ describe('submission with a translation', () => {
     const json = JSON.stringify(buildDocDefinition({ content, submission, envelope: null, hash: 'a'.repeat(64) }))
     expect(json).toContain('Aufgaben angezeigt mit Übersetzung: Ukrainisch')
     expect(json).toContain('Tabellen in 1NF (4 Punkte)')
+  })
+
+  it('keeps the focus log through embedding and shows it on the PDF', async () => {
+    const withFocus: Submission = { ...submission, focus: { left: 6, awayMs: 252_000 } }
+    const parsed = embeddedSubmissionSchema.parse(JSON.parse(JSON.stringify({ submission: withFocus, signature: null })))
+    expect(await hashSubmission(parsed.submission)).toBe(await hashSubmission(withFocus))
+    const content = toStudentContent(examContentSchema.parse(base))
+    const json = JSON.stringify(buildDocDefinition({ content, submission: withFocus, envelope: null, hash: 'a'.repeat(64) }))
+    expect(json).toContain('6× verlassen, insgesamt 4 Min. 12 Sek. (während der Prüfung)')
+  })
+
+  it('summarises the focus log in German', () => {
+    expect(focusSummary({ left: 0, awayMs: 0 })).toBe('nicht verlassen')
+    expect(focusSummary({ left: 1, awayMs: 12_000 })).toBe('1× verlassen, insgesamt 12 Sek.')
+    expect(focusSummary({ left: 2, awayMs: 120_000 })).toBe('2× verlassen, insgesamt 2 Min.')
   })
 
   it('preview PDFs are marked as preview', () => {
