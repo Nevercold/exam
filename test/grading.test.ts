@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { examContentSchema, examWarnings, toStudentContent } from '../shared/utils/exam'
+import { examContentSchema, examWarnings, pointsLabel, toStudentContent } from '../shared/utils/exam'
 import { buildGradingMessages, extractJson, parseGradingReply } from '../shared/utils/grading'
 
 const content = examContentSchema.parse({
@@ -74,8 +74,15 @@ describe('parseGradingReply', () => {
 })
 
 describe('points in the exam model', () => {
-  it('are teacher-only', () => {
-    expect(JSON.stringify(toStudentContent(content))).not.toContain('points')
+  it('are shown to students, the solution is not', () => {
+    const student = toStudentContent(content)
+    expect(student.blocks.find(b => b.id === 's')).toMatchObject({ points: 4 })
+    expect(student.blocks.find(b => b.id === 'note')).not.toHaveProperty('points')
+    expect(JSON.stringify(student)).not.toContain('Transitive Abhängigkeit aufgelöst')
+  })
+
+  it('are labelled in German', () => {
+    expect([pointsLabel(1), pointsLabel(2.5), pointsLabel(4)]).toEqual(['1 Punkt', '2,5 Punkte', '4 Punkte'])
   })
 
   it('accept half points only', () => {

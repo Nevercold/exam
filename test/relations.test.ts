@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { canonicalJson } from '../shared/utils/submission'
-import { copySchemaTables, examContentSchema, examWarnings, sanitizeAnswers, schemaTablesSchema, templateContent, toStudentContent, type Cardinality, type SchemaTable } from '../shared/utils/exam'
+import { addColumns, copySchemaTables, splitColumnNames, examContentSchema, examWarnings, sanitizeAnswers, schemaTablesSchema, templateContent, toStudentContent, type Cardinality, type SchemaTable } from '../shared/utils/exam'
 import { schemaHints } from '../shared/utils/hints'
 import { compareRelationships, diagramLayout, diagramSvg, fkProblem, matchTables, relationships, relationshipText } from '../shared/utils/relations'
 
@@ -100,6 +100,33 @@ describe('data model', () => {
     const student = toStudentContent(examContentSchema.parse({ title: 'T', blocks: [{ id: 's', type: 'schema-answer', askCardinality: true }] }))
     const answers = sanitizeAnswers(student.blocks, { s: orders() })
     expect(relationships(answers.s as SchemaTable[]).every(r => r.cardinality === '1:n')).toBe(true)
+  })
+})
+
+describe('adding columns', () => {
+  it('splits names at commas, semicolons, tabs and new lines', () => {
+    expect(splitColumnNames(' KundenNr, Name;Ort\tPLZ\n,,  ')).toEqual(['KundenNr', 'Name', 'Ort', 'PLZ'])
+  })
+
+  it('fills a new table: first column is the PK, one empty row', () => {
+    const t: SchemaTable = { name: 'Kunde', columns: [], rows: [] }
+    addColumns(t, ['KundenNr', 'Name'])
+    expect(t.columns.map(c => [c.name, c.pk])).toEqual([['KundenNr', true], ['Name', false]])
+    expect(t.rows).toEqual([['', '']])
+  })
+
+  it('replaces the single empty column of an old-style new table', () => {
+    const t: SchemaTable = { name: '', columns: [{ name: '', pk: true, fk: null }], rows: [['']] }
+    addColumns(t, ['A', 'B'])
+    expect(t.columns.map(c => c.name)).toEqual(['A', 'B'])
+    expect(t.rows).toEqual([['', '']])
+  })
+
+  it('appends to existing columns and keeps the data', () => {
+    const t = table('Kunde', ['KundenNr', true])
+    addColumns(t, ['Ort'])
+    expect(t.columns.map(c => c.name)).toEqual(['KundenNr', 'Ort'])
+    expect(t.rows).toEqual([['x', '']])
   })
 })
 

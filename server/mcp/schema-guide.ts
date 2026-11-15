@@ -18,7 +18,7 @@ type Block =
                                                                   // (copies keys and cardinalities too)
       askCardinality?: boolean,                                   // true: students give a cardinality for every
                                                                   // FK and see the relational diagram; omit = off
-      points?: number,                                            // max. points (0.5–100, steps of 0.5), teacher-only
+      points?: number,                                            // max. points (0.5–100, steps of 0.5), shown to students
       solution: SchemaTable[] | null }                            // model solution (never shown to students)
   | { id: string, type: 'freetext', label: string,                // student writes text
       maxLength: number | null, points?: number,
@@ -80,7 +80,7 @@ validate_exam warns about FKs that don't point to a primary key and about missin
 blocks with askCardinality.
 
 Points: set them on all answer blocks or on none (validate_exam warns about a mix). They are the maximum for the
-teacher's grading (and AI grading suggestions on the verification page); students don't see them.
+teacher's grading (and AI grading suggestions on the verification page); students see them next to the task and in the PDF.
 
 Block ids: short, stable, e.g. "intro", "given", "1nf-tables". Limits: 30 columns, 50 rows, 20 tables,
 500 chars per cell.

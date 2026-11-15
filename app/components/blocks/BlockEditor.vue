@@ -94,7 +94,7 @@ function copySolutionFromSource() {
       </div>
       <UFormField
         label="Punkte"
-        help="Höchstpunktzahl für diesen Block (für die Bewertung, Schüler sehen sie nicht)"
+        help="Höchstpunktzahl, steht für Schüler neben der Aufgabe und im PDF"
         class="sm:max-w-56"
       >
         <UInputNumber
@@ -201,7 +201,7 @@ function copySolutionFromSource() {
         </UFormField>
         <UFormField
           label="Punkte"
-          help="nur für die Bewertung"
+          help="sehen auch Schüler"
         >
           <UInputNumber
             :model-value="block.points"

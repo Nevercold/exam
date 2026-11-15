@@ -1,5 +1,6 @@
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces'
 import type { SchemaTable, StudentContent } from '../../shared/utils/exam'
+import { pointsLabel } from '../../shared/utils/exam'
 import { diagramLayout, diagramSvg, relationships, relationshipText } from '../../shared/utils/relations'
 import { embeddedSubmissionSchema, PDF_INFO_KEY, verificationCode, type EmbeddedSubmission, type SignedEnvelope, type Submission } from '../../shared/utils/submission'
 
@@ -96,7 +97,7 @@ export function buildDocDefinition(opts: {
       const raw = submission.answers[block.id]
       const tables = Array.isArray(raw) ? raw as SchemaTable[] : []
       body.push(
-        { text: block.label || 'Tabellen', style: 'heading', headlineLevel: 1 },
+        { text: `${block.label || 'Tabellen'}${block.points ? ` (${pointsLabel(block.points)})` : ''}`, style: 'heading', headlineLevel: 1 },
         ...schemaTablesContent(tables),
       )
       if (block.askCardinality && tables.length) body.push(...relationalModelContent(tables))
@@ -104,7 +105,7 @@ export function buildDocDefinition(opts: {
     else if (block.type === 'freetext') {
       const text = submission.answers[block.id]
       body.push(
-        { text: block.label || 'Antwort', style: 'heading', headlineLevel: 1 },
+        { text: `${block.label || 'Antwort'}${block.points ? ` (${pointsLabel(block.points)})` : ''}`, style: 'heading', headlineLevel: 1 },
         typeof text === 'string' && text.trim()
           ? { text }
           : { text: 'Keine Antwort', italics: true, color: '#71717a' },

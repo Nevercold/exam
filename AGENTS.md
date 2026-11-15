@@ -144,6 +144,11 @@ test/               Vitest unit tests (pure logic, no Nuxt context)
   both before trusting a new provider.
 - A literal BOM (`﻿`) in a template string becomes an invisible character after `lint:fix` and then fails
   `no-irregular-whitespace`: use `String.fromCharCode(0xFEFF)`.
+- Student forms: check the Tab order by actually typing. In the table editor, Tab from the table name used to land
+  on "Tabelle löschen" and the next Enter deleted the table. DOM order = tab order; place actions visually with
+  grid/order instead, and make destructive one-click actions undoable (toast with "Rückgängig").
+- Data attributes on Nuxt UI inputs may end up on the wrapper or on the `<input>`; the `focus()` helper in
+  `SchemaTablesInput.vue` handles both.
 - `@click="fn"` passes the event as first argument; for functions with an optional parameter (`exportPdf(force)`)
   write `@click="fn()"`.
 - The relational diagram is plain SVG from `diagramLayout()`: the Vue template renders it in the browser (escaped),

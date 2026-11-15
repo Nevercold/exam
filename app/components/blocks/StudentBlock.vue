@@ -58,6 +58,10 @@ const maxLength = computed(() => (props.block.type === 'freetext' ? props.block.
       <div class="flex flex-wrap items-center justify-between gap-2">
         <h3 class="font-semibold text-highlighted">
           {{ block.label || 'Deine Tabellen' }}
+          <span
+            v-if="block.points"
+            class="font-normal text-muted"
+          >({{ pointsLabel(block.points) }})</span>
         </h3>
         <UButton
           v-if="source && !disabled"
@@ -111,7 +115,7 @@ const maxLength = computed(() => (props.block.type === 'freetext' ? props.block.
 
     <template v-else-if="block.type === 'freetext'">
       <UFormField
-        :label="block.label || 'Deine Antwort'"
+        :label="`${block.label || 'Deine Antwort'}${block.points ? ` (${pointsLabel(block.points)})` : ''}`"
         :help="`${text.length} / ${maxLength} Zeichen`"
         :ui="{ label: 'font-semibold text-highlighted' }"
       >

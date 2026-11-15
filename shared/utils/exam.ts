@@ -58,7 +58,12 @@ export const schemaTableSchema = z.object({
 
 export const schemaTablesSchema = z.array(schemaTableSchema).max(LIMITS.tables)
 
-// Maximum points of an answer block (half points allowed). Teacher-only, like the solution.
+/** "4 Punkte", "1 Punkt", "2,5 Punkte" */
+export function pointsLabel(points: number): string {
+  return `${points.toLocaleString('de-DE', { maximumFractionDigits: 1 })} ${points === 1 ? 'Punkt' : 'Punkte'}`
+}
+
+// Maximum points of an answer block (half points allowed). Shown to students next to the task.
 const pointsSchema = z.number().min(0.5, 'Mindestens 0,5 Punkte').max(100, 'Höchstens 100 Punkte').multipleOf(0.5, 'Nur ganze oder halbe Punkte').optional()
 
 export const textBlockSchema = z.object({
@@ -134,8 +139,8 @@ export type SchemaTable = z.output<typeof schemaTableSchema>
 const studentBlockSchema = z.discriminatedUnion('type', [
   textBlockSchema,
   tableBlockSchema,
-  schemaAnswerBlockSchema.pick({ id: true, type: true, label: true, copyFrom: true, askCardinality: true }),
-  freetextBlockSchema.pick({ id: true, type: true, label: true, maxLength: true }),
+  schemaAnswerBlockSchema.pick({ id: true, type: true, label: true, copyFrom: true, askCardinality: true, points: true }),
+  freetextBlockSchema.pick({ id: true, type: true, label: true, maxLength: true, points: true }),
 ])
 
 export const studentContentSchema = z.object({
@@ -176,6 +181,29 @@ export function sanitizeAnswers(blocks: StudentBlock[], raw: unknown): Answers {
 }
 
 // ---------- Helpers ----------
+
+/** "KundenNr, Name; Ort" (also tabs/new lines from a spreadsheet) → ["KundenNr", "Name", "Ort"] */
+export function splitColumnNames(text: string): string[] {
+  return text.split(/[,;\t\n]+/).map(s => s.trim().slice(0, 100)).filter(Boolean)
+}
+
+/**
+ * Adds several columns at once. A fresh table (only one unnamed, empty column) is replaced; the first column of a
+ * table without columns becomes the PK (same default as before); a table without rows gets one empty row.
+ */
+export function addColumns(t: SchemaTable, names: string[]): void {
+  const fresh = t.columns.length === 1 && !t.columns[0]!.name.trim() && !t.columns[0]!.fk && t.rows.every(r => !r[0]?.trim())
+  if (fresh) {
+    t.columns = []
+    t.rows = []
+  }
+  for (const name of names) {
+    if (t.columns.length >= LIMITS.columns) break
+    t.columns.push({ name, pk: t.columns.length === 0, fk: null })
+    for (const r of t.rows) r.push('')
+  }
+  if (t.rows.length === 0 && t.columns.length > 0) t.rows.push(t.columns.map(() => ''))
+}
 
 /** "Tabellen aus vorherigem Schritt übernehmen": a deep copy incl. keys and cardinalities. Pass raw (non-proxy) data. */
 export function copySchemaTables(tables: SchemaTable[]): SchemaTable[] {
