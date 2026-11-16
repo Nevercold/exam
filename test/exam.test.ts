@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { examContentSchema, examWarnings, sanitizeAnswers, templateContent, toStudentContent, type ExamContent } from '../shared/utils/exam'
+import { examContentSchema, examWarnings, runPointsSchema, sanitizeAnswers, templateContent, toStudentContent, withPoints, type ExamContent } from '../shared/utils/exam'
 
 const solutionTable = { name: 'Kunde', columns: [{ name: 'KundenNr', pk: true, fk: null }], rows: [['K1']] }
 
@@ -90,5 +90,28 @@ describe('sanitizeAnswers', () => {
       unknown: 'x',
     })
     expect(Object.keys(answers).sort()).toEqual(['f', 's1'])
+  })
+})
+
+describe('withPoints', () => {
+  it('sets and removes points on answer blocks only', () => {
+    const content = withPoints(exam(), { s1: 4, f: 2.5, a: 3, unknown: 1 })
+    const byId = Object.fromEntries(content.blocks.map(b => [b.id, b]))
+    expect(byId.s1).toMatchObject({ points: 4, solution: [solutionTable] })
+    expect(byId.f).toMatchObject({ points: 2.5 })
+    expect(byId.s2).not.toHaveProperty('points')
+    expect(byId.a).not.toHaveProperty('points')
+
+    const removed = withPoints(content, { s1: null })
+    // No leftover key: same JSON as a block that never had points
+    expect(JSON.stringify(removed.blocks[2])).toBe(JSON.stringify(exam().blocks[2]))
+    expect(removed.blocks[4]).toMatchObject({ points: 2.5 })
+  })
+
+  it('validates like the editor', () => {
+    expect(runPointsSchema.safeParse({ points: { s1: 2.5, f: null } }).success).toBe(true)
+    expect(runPointsSchema.safeParse({ points: { s1: 0 } }).success).toBe(false)
+    expect(runPointsSchema.safeParse({ points: { s1: 1.3 } }).success).toBe(false)
+    expect(runPointsSchema.safeParse({ points: { s1: 101 } }).success).toBe(false)
   })
 })

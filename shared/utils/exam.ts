@@ -95,7 +95,8 @@ export const LANGUAGE_CODES = ('aa ab af ak am an ar as av ay az ba be bg bi bm 
   + 'sr ss st su sv sw ta te tg th ti tk tl tn to tr ts tt tw ty ug uk ur uz ve vi wa wo xh yi yo za zh zu ckb kmr prs').split(' ')
 
 // Maximum points of an answer block (half points allowed). Shown to students next to the task.
-const pointsSchema = z.number().min(0.5, 'Mindestens 0,5 Punkte').max(100, 'Höchstens 100 Punkte').multipleOf(0.5, 'Nur ganze oder halbe Punkte').optional()
+const pointsValueSchema = z.number().min(0.5, 'Mindestens 0,5 Punkte').max(100, 'Höchstens 100 Punkte').multipleOf(0.5, 'Nur ganze oder halbe Punkte')
+const pointsSchema = pointsValueSchema.optional()
 
 export const textBlockSchema = z.object({
   id: blockId,
@@ -237,6 +238,31 @@ export function sanitizeAnswers(blocks: StudentBlock[], raw: unknown): Answers {
     if (parsed.success) result[b.id] = parsed.data
   }
   return result
+}
+
+// ---------- Points of a run (set afterwards, e.g. when forgotten before the run) ----------
+
+/** Maximum points per answer block; null removes them. Points aren't part of the signed hash. */
+export const runPointsSchema = z.object({
+  points: z.record(blockId, pointsValueSchema.nullable()),
+})
+
+export type RunPoints = z.output<typeof runPointsSchema>['points']
+
+/** Returns the content with the given points; other blocks and unknown IDs are left alone. */
+export function withPoints(content: ExamContent, points: RunPoints): ExamContent {
+  return {
+    ...content,
+    blocks: content.blocks.map((b) => {
+      if ((b.type !== 'schema-answer' && b.type !== 'freetext') || !(b.id in points)) return b
+      const next = { ...b }
+      const p = points[b.id]
+      // Delete instead of undefined: keeps the stored JSON identical to a block that never had points
+      if (p === null || p === undefined) delete next.points
+      else next.points = p
+      return next
+    }),
+  }
 }
 
 // ---------- Helpers ----------

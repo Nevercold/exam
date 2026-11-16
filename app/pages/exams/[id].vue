@@ -170,6 +170,7 @@ async function duplicate() {
 
 const startOpen = ref(false)
 const runsOpen = ref(false)
+const pointsRunId = ref<string | null>(null)
 const { data: runs, refresh: refreshRuns } = useLazyFetch<RunInfo[]>(`/api/exams/${id}/runs`, { immediate: false, default: () => [] })
 watch(runsOpen, open => open && refreshRuns())
 const dateTime = new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' })
@@ -605,6 +606,15 @@ async function exportPreview() {
               <span class="flex-1 text-sm">{{ dateTime.format(new Date(run.startedAt ?? run.createdAt)) }}</span>
               <span class="font-mono text-sm text-muted">{{ run.pin }}</span>
               <UButton
+                size="sm"
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-award"
+                aria-label="Punkte anpassen"
+                title="Punkte anpassen"
+                @click="pointsRunId = run.id"
+              />
+              <UButton
                 :to="`/runs/${run.id}`"
                 size="sm"
                 color="neutral"
@@ -616,6 +626,11 @@ async function exportPreview() {
           </ul>
         </template>
       </UModal>
+
+      <RunPointsModal
+        :run-id="pointsRunId"
+        @close="pointsRunId = null"
+      />
     </template>
   </UDashboardPanel>
 </template>
