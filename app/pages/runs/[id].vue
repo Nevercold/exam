@@ -76,6 +76,28 @@ let clock: ReturnType<typeof setInterval> | undefined
 onMounted(() => (clock = setInterval(() => (now.value = Date.now()), 15_000)))
 onBeforeUnmount(() => clearInterval(clock))
 const signOpen = computed(() => !!run.value?.signUntil && new Date(run.value.signUntil).getTime() > now.value)
+
+// Browser fullscreen hides tabs and address bar on the projector. Esc leaves it (browser default).
+const fullscreen = ref(false)
+const canFullscreen = ref(false)
+function syncFullscreen() {
+  fullscreen.value = !!document.fullscreenElement
+}
+onMounted(() => {
+  canFullscreen.value = document.fullscreenEnabled
+  document.addEventListener('fullscreenchange', syncFullscreen)
+})
+onBeforeUnmount(() => document.removeEventListener('fullscreenchange', syncFullscreen))
+async function toggleFullscreen() {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen()
+    else await document.documentElement.requestFullscreen()
+  }
+  catch {
+    toast.add({ title: 'Vollbild nicht möglich. Alternativ F11 drücken.', color: 'error' })
+  }
+}
+defineShortcuts({ f: () => canFullscreen.value && toggleFullscreen() })
 </script>
 
 <template>
@@ -91,6 +113,16 @@ const signOpen = computed(() => !!run.value?.signUntil && new Date(run.value.sig
       <h1 class="flex-1 min-w-0 text-2xl font-bold truncate">
         {{ run!.title }}
       </h1>
+      <UButton
+        v-if="canFullscreen"
+        :icon="fullscreen ? 'i-lucide-minimize' : 'i-lucide-maximize'"
+        color="neutral"
+        variant="ghost"
+        size="lg"
+        :aria-label="fullscreen ? 'Vollbild beenden (F)' : 'Vollbild (F)'"
+        :title="fullscreen ? 'Vollbild beenden (F)' : 'Vollbild (F)'"
+        @click="toggleFullscreen()"
+      />
       <UButton
         v-if="status !== 'ended'"
         :icon="status === 'waiting' ? 'i-lucide-x' : 'i-lucide-square'"
