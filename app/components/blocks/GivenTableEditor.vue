@@ -18,6 +18,14 @@ function removeColumn(ci: number) {
   for (const r of table.value.rows) r.splice(ci, 1)
 }
 
+function moveColumn(ci: number, delta: -1 | 1) {
+  const j = ci + delta
+  const cols = table.value.columns
+  if (j < 0 || j >= cols.length) return
+  ;[cols[ci], cols[j]] = [cols[j]!, cols[ci]!]
+  for (const r of table.value.rows) [r[ci], r[j]] = [r[j]!, r[ci]!]
+}
+
 function addRow() {
   if (table.value.rows.length >= LIMITS.rows) return
   table.value.rows.push(table.value.columns.map(() => ''))
@@ -49,7 +57,7 @@ function applyPaste() {
             <th
               v-for="(_, ci) in table.columns"
               :key="ci"
-              class="min-w-36"
+              class="min-w-44"
             >
               <div class="flex items-center gap-0.5">
                 <UInput
@@ -57,9 +65,31 @@ function applyPaste() {
                   size="sm"
                   :disabled="disabled"
                   :maxlength="LIMITS.cell"
-                  class="flex-1 font-semibold"
+                  class="flex-1 min-w-24 font-semibold"
                   :aria-label="`Spaltenname ${ci + 1}`"
                 />
+                <template v-if="!disabled">
+                  <UButton
+                    icon="i-lucide-arrow-left"
+                    size="xs"
+                    color="neutral"
+                    variant="ghost"
+                    :disabled="ci === 0"
+                    aria-label="Spalte nach links"
+                    title="Nach links"
+                    @click="moveColumn(ci, -1)"
+                  />
+                  <UButton
+                    icon="i-lucide-arrow-right"
+                    size="xs"
+                    color="neutral"
+                    variant="ghost"
+                    :disabled="ci === table.columns.length - 1"
+                    aria-label="Spalte nach rechts"
+                    title="Nach rechts"
+                    @click="moveColumn(ci, 1)"
+                  />
+                </template>
                 <UButton
                   v-if="!disabled"
                   icon="i-lucide-x"

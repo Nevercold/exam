@@ -125,6 +125,14 @@ async function gradeAll() {
 
 const gradeOf = (r: Result | null, blockId: string) => r?.grading.result?.blocks.find(b => b.id === blockId) ?? null
 const formatPoints = (n: number) => n.toLocaleString('de-DE', { maximumFractionDigits: 1 })
+// Share of the maximum for the grade key; empty without a maximum
+const formatPercent = (total: number | null | undefined, max: number | null | undefined) =>
+  total != null && max ? `${(total / max * 100).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %` : ''
+// "85 %, Note 2" for the overview
+const formatScore = (total: number | null | undefined, max: number | null | undefined) => {
+  const grade = ihkGrade(total, max)
+  return grade ? `${formatPercent(total, max)}, Note ${grade.grade}` : formatPercent(total, max)
+}
 
 // --- CSV for the grade book (semicolon + BOM: opens correctly in German Excel) ---
 function exportCsv() {
@@ -132,7 +140,7 @@ function exportCsv() {
   const blockCols = done.find(r => r.grading.result)?.grading.result?.blocks.filter(b => b.maxPoints !== null) ?? []
   // Leading = + - @ would be read as a formula by spreadsheet apps
   const esc = (v: string) => `"${(/^[=+\-@]/.test(v) ? `'${v}` : v).replace(/"/g, '""')}"`
-  const header = ['Name', 'Datei', 'Signatur', 'Prüfcode', 'Seite verlassen', ...blockCols.map(b => `${b.label} (max. ${formatPoints(b.maxPoints!)})`), 'KI-Punkte', 'Maximal']
+  const header = ['Name', 'Datei', 'Signatur', 'Prüfcode', 'Seite verlassen', ...blockCols.map(b => `${b.label} (max. ${formatPoints(b.maxPoints!)})`), 'KI-Punkte', 'Maximal', 'Prozent', 'Note (IHK)']
   const lines = done.map((r) => {
     const g = r.grading.result
     return [
@@ -147,6 +155,8 @@ function exportCsv() {
       }),
       g?.total !== null && g?.total !== undefined ? formatPoints(g.total) : '',
       g?.max !== null && g?.max !== undefined ? formatPoints(g.max) : '',
+      formatPercent(g?.total, g?.max),
+      ihkGrade(g?.total, g?.max)?.grade ?? '',
     ].map(v => esc(String(v))).join(';')
   })
   const csv = String.fromCharCode(0xFEFF) + [header.map(esc).join(';'), ...lines].join('\r\n')
@@ -399,6 +409,7 @@ const asText = (v: unknown) => (typeof v === 'string' ? v : '')
                       >Fehler</span>
                       <template v-else-if="item.result.grading.result?.total != null">
                         {{ formatPoints(item.result.grading.result.total) }} / {{ formatPoints(item.result.grading.result.max!) }}
+                        <span class="text-muted whitespace-nowrap">({{ formatScore(item.result.grading.result.total, item.result.grading.result.max) }})</span>
                       </template>
                       <span
                         v-else-if="item.result.grading.state === 'done'"
@@ -530,6 +541,11 @@ const asText = (v: unknown) => (typeof v === 'string' ? v : '')
             >
               <template v-if="result.grading.result.total !== null">
                 Vorschlag: {{ formatPoints(result.grading.result.total) }} von {{ formatPoints(result.grading.result.max!) }} Punkten
+                ({{ formatPercent(result.grading.result.total, result.grading.result.max) }})
+                <template v-if="ihkGrade(result.grading.result.total, result.grading.result.max)">
+                  · IHK-Note {{ ihkGrade(result.grading.result.total, result.grading.result.max)!.grade }}
+                  ({{ ihkGrade(result.grading.result.total, result.grading.result.max)!.label }})
+                </template>
               </template>
               <template v-else>
                 Vorschlag erstellt (die Prüfung hat keine Punkte)

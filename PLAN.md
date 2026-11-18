@@ -175,12 +175,12 @@ Each phase ends with green `lint`, `typecheck`, `test`, a commit (and push once 
 ## Ideas (not planned yet)
 
 - More block types: `choice` (single/multiple choice), `sql` (query answer), ER diagrams (Chen).
-- "Extend timer" button on the projector view.
 - Automatic comparison hints on the verification page (currently manual grading by design).
 
 ## Further defaults (confirmed)
 
 - Students can join a run only while it is active; pages already open keep working offline.
-- No "extend timer" button for now.
+- The projector can extend the timer (+5/+10/+15 or custom, max. 120 min per click), also after it ran out
+  (reopens the run) as long as nobody clicked "Beenden" and signing is still open.
 - The PDF shows only name, exam title, date, answers and the verification code.
 - Only the owner can archive an exam or change its sharing.

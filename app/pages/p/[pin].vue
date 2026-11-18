@@ -117,15 +117,23 @@ const endedByTeacher = ref(false)
 const serverSignUntil = ref<Date | null>(null)
 let heartbeat: ReturnType<typeof setInterval> | undefined
 async function sendHeartbeat() {
-  // Also in the cached (offline) view: after a reload past the end, this is how the page learns it ended
+  // Also in the cached (offline) view: after a reload past the end, this is how the page learns it ended.
+  // Keeps running after the timer ran out: the teacher may extend it until signing closes.
   if (!run.value || endedByTeacher.value) return
+  if (serverSignUntil.value && serverSignUntil.value.getTime() < Date.now()) return
   try {
-    const res = await $fetch<{ status: 'waiting' | 'running' | 'ended', signUntil: string | null }>('/api/presence', {
+    const res = await $fetch<{ status: 'waiting' | 'running' | 'ended', signUntil: string | null, endsAt: string | null, endedByTeacher: boolean }>('/api/presence', {
       method: 'POST',
       body: { runId: run.value.runId, clientId: client },
     })
     serverSignUntil.value = res.signUntil ? new Date(res.signUntil) : null
-    if (res.status === 'ended') endedByTeacher.value = true
+    if (res.endedByTeacher) endedByTeacher.value = true
+    // Back online, or reopened by an extension after the page fell back to the cached copy
+    if (res.status === 'running') offline.value = false
+    if (run.value && res.endsAt !== run.value.endsAt) {
+      run.value.endsAt = res.endsAt
+      writeStorage(cacheKey, { runId: run.value.runId, endsAt: res.endsAt, content: run.value.content } satisfies Cached)
+    }
   }
   catch {
     // Offline for a moment: nothing to do, the next heartbeat retries
@@ -141,13 +149,25 @@ onBeforeUnmount(() => clearInterval(heartbeat))
 
 // --- autosave ---
 let saveTimer: ReturnType<typeof setTimeout> | undefined
+function saveNow() {
+  clearTimeout(saveTimer)
+  saveTimer = undefined
+  if (run.value && writeStorage(`exam:answers:${run.value.runId}`, { name: name.value, answers: answers.value })) lastSaved.value = new Date()
+}
 watch([name, answers], () => {
   if (!run.value) return
   clearTimeout(saveTimer)
-  saveTimer = setTimeout(() => {
-    if (writeStorage(`exam:answers:${run.value!.runId}`, { name: name.value, answers: answers.value })) lastSaved.value = new Date()
-  }, 500)
+  saveTimer = setTimeout(saveNow, 500)
 }, { deep: true })
+// Reload or closing the tab within the debounce window must not lose the last keystrokes
+function flushSave() {
+  if (saveTimer !== undefined) saveNow()
+}
+onMounted(() => window.addEventListener('pagehide', flushSave))
+onBeforeUnmount(() => {
+  flushSave()
+  window.removeEventListener('pagehide', flushSave)
+})
 
 // --- countdown ---
 const { label: remaining, remainingMs, expired } = useCountdown(() => run.value?.endsAt, () => run.value?.serverNow)
@@ -385,7 +405,7 @@ async function exportPdf(force = false) {
             v-model="name"
             size="xl"
             :maxlength="100"
-            autocomplete="name"
+            autocomplete="off"
             class="w-full"
             @blur="nameTouched = true"
           />

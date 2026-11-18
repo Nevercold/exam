@@ -247,7 +247,7 @@ function toggleFk(c: SchemaColumn) {
               <th
                 v-for="(c, ci) in t.columns"
                 :key="ci"
-                class="align-top min-w-36"
+                class="align-top min-w-44"
               >
                 <div class="flex flex-col gap-1">
                   <UInput
@@ -331,6 +331,32 @@ function toggleFk(c: SchemaColumn) {
                       :title="`${c.fk.table}.${c.fk.column}`"
                     >→ {{ c.fk.table }}<template v-if="askCardinality"> ({{ c.fk.cardinality ?? '?' }})</template></span>
                     <span class="flex-1" />
+                    <!-- Visible for the mouse (students didn't find it in the menu); keyboard users get the same
+                         actions in the menu, so these stay out of the tab order between the column fields -->
+                    <template v-if="!disabled">
+                      <UButton
+                        icon="i-lucide-arrow-left"
+                        size="xs"
+                        color="neutral"
+                        variant="ghost"
+                        tabindex="-1"
+                        :disabled="ci === 0"
+                        :aria-label="tx.moveLeft"
+                        :title="tx.moveLeft"
+                        @click="moveColumn(t, ci, -1)"
+                      />
+                      <UButton
+                        icon="i-lucide-arrow-right"
+                        size="xs"
+                        color="neutral"
+                        variant="ghost"
+                        tabindex="-1"
+                        :disabled="ci === t.columns.length - 1"
+                        :aria-label="tx.moveRight"
+                        :title="tx.moveRight"
+                        @click="moveColumn(t, ci, 1)"
+                      />
+                    </template>
                     <UDropdownMenu
                       v-if="!disabled"
                       :items="[[

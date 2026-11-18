@@ -68,6 +68,22 @@ async function endRun() {
   }
 }
 
+// Also after the timer ran out (not after "Beenden"): reopens the run, students see it with the next heartbeat
+const extending = ref(false)
+async function extendRun(minutes: number) {
+  extending.value = true
+  try {
+    run.value = await $fetch<RunView>(`/api/runs/${id}/extend`, { method: 'POST', body: { minutes } })
+    toast.add({ title: `Zeit um ${minutes} Minuten verlängert`, color: 'success' })
+  }
+  catch (err) {
+    toast.add({ title: errorMessage(err), color: 'error' })
+  }
+  finally {
+    extending.value = false
+  }
+}
+
 const timeFormat = new Intl.DateTimeFormat('de-DE', { timeStyle: 'short' })
 
 // Grace period after the end: re-evaluated every 15 s so the text flips when it's over
@@ -210,6 +226,11 @@ defineShortcuts({ f: () => canFullscreen.value && toggleFullscreen() })
               bis {{ timeFormat.format(new Date(run!.endsAt!)) }} Uhr
             </p>
           </div>
+          <ExtendTimeButtons
+            v-if="remaining !== null"
+            :loading="extending"
+            @extend="extendRun"
+          />
           <p
             v-else
             class="text-muted"
@@ -247,6 +268,19 @@ defineShortcuts({ f: () => canFullscreen.value && toggleFullscreen() })
           Ab jetzt erstellte PDFs sind nicht signiert.
         </template>
       </p>
+      <!-- Timer ran out (not ended by hand): extending reopens the exam while signing is still open -->
+      <div
+        v-if="run!.startedAt && !run!.endedAt && run!.endsAt && signOpen"
+        class="flex flex-col items-center gap-2 mt-4"
+      >
+        <p class="text-muted">
+          Doch noch mehr Zeit? Die Prüfung wird dann wieder geöffnet.
+        </p>
+        <ExtendTimeButtons
+          :loading="extending"
+          @extend="extendRun"
+        />
+      </div>
       <UButton
         v-if="run!.startedAt"
         to="/verify"
