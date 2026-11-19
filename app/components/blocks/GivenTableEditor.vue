@@ -18,6 +18,17 @@ function removeColumn(ci: number) {
   for (const r of table.value.rows) r.splice(ci, 1)
 }
 
+// Asks first unless the column has no data
+const confirmColumn = ref<number | null>(null)
+function askRemoveColumn(ci: number) {
+  if (table.value.rows.every(r => !r[ci]?.trim())) return removeColumn(ci)
+  confirmColumn.value = ci
+}
+function runRemoveColumn() {
+  if (confirmColumn.value !== null) removeColumn(confirmColumn.value)
+  confirmColumn.value = null
+}
+
 function moveColumn(ci: number, delta: -1 | 1) {
   const j = ci + delta
   const cols = table.value.columns
@@ -98,7 +109,7 @@ function applyPaste() {
                   variant="ghost"
                   :disabled="table.columns.length <= 1"
                   aria-label="Spalte löschen"
-                  @click="removeColumn(ci)"
+                  @click="askRemoveColumn(ci)"
                 />
               </div>
             </th>
@@ -197,5 +208,31 @@ function applyPaste() {
         Übernehmen
       </UButton>
     </div>
+
+    <UModal
+      :open="confirmColumn !== null"
+      :title="`Spalte „${table.columns[confirmColumn ?? 0] || (confirmColumn ?? 0) + 1}“ löschen?`"
+      description="Alle Einträge darin gehen verloren."
+      @update:open="!$event && (confirmColumn = null)"
+    >
+      <template #footer>
+        <div class="flex justify-end gap-2 w-full">
+          <UButton
+            color="neutral"
+            variant="ghost"
+            @click="confirmColumn = null"
+          >
+            Abbrechen
+          </UButton>
+          <UButton
+            color="error"
+            icon="i-lucide-trash-2"
+            @click="runRemoveColumn"
+          >
+            Löschen
+          </UButton>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>

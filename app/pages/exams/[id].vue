@@ -78,13 +78,19 @@ function removeBlock(i: number) {
   selected.value = Math.max(0, Math.min(selected.value, state.value.blocks.length - 1))
 }
 
+const confirmRemoveBlock = ref<number | null>(null)
+function runRemoveBlock() {
+  if (confirmRemoveBlock.value !== null) removeBlock(confirmRemoveBlock.value)
+  confirmRemoveBlock.value = null
+}
+
 function blockActions(i: number): DropdownMenuItem[][] {
   return [
     [
       { label: 'Nach oben', icon: 'i-lucide-arrow-up', disabled: i === 0, onSelect: () => moveBlock(i, -1) },
       { label: 'Nach unten', icon: 'i-lucide-arrow-down', disabled: i === state.value.blocks.length - 1, onSelect: () => moveBlock(i, 1) },
     ],
-    [{ label: 'Löschen', icon: 'i-lucide-trash-2', color: 'error', onSelect: () => removeBlock(i) }],
+    [{ label: 'Löschen', icon: 'i-lucide-trash-2', color: 'error', onSelect: () => (confirmRemoveBlock.value = i) }],
   ]
 }
 
@@ -631,6 +637,32 @@ async function exportPreview() {
         :run-id="pointsRunId"
         @close="pointsRunId = null"
       />
+
+      <UModal
+        :open="confirmRemoveBlock !== null"
+        :title="`„${state.blocks[confirmRemoveBlock ?? 0] ? blockTitle(state.blocks[confirmRemoveBlock ?? 0]!) : ''}“ löschen?`"
+        description="Der Block wird samt Inhalt aus dem Entwurf entfernt."
+        @update:open="!$event && (confirmRemoveBlock = null)"
+      >
+        <template #footer>
+          <div class="flex justify-end gap-2 w-full">
+            <UButton
+              color="neutral"
+              variant="ghost"
+              @click="confirmRemoveBlock = null"
+            >
+              Abbrechen
+            </UButton>
+            <UButton
+              color="error"
+              icon="i-lucide-trash-2"
+              @click="runRemoveBlock"
+            >
+              Löschen
+            </UButton>
+          </div>
+        </template>
+      </UModal>
     </template>
   </UDashboardPanel>
 </template>

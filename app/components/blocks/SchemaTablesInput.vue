@@ -22,25 +22,31 @@ function addTable() {
   focus(`[data-table-name="${tables.value.length - 1}"]`)
 }
 
-// One click deletes, with "Rückgängig" in case it was an accident (a lost table costs a student minutes)
-const toast = useToast()
+// Deleting asks first (a lost table costs a student minutes); empty ones go without asking
+const confirmDelete = ref<{ title: string, run: () => void } | null>(null)
+
 function removeTable(ti: number) {
-  const [removed] = tables.value.splice(ti, 1)
+  tables.value.splice(ti, 1)
   pendingColumns.value = {}
-  if (!removed) return
-  toast.add({
-    title: tx.value.tableDeleted(removed.name.trim() || String(ti + 1)),
-    color: 'neutral',
-    icon: 'i-lucide-trash-2',
-    duration: 8000,
-    actions: [{
-      label: tx.value.undo,
-      icon: 'i-lucide-undo-2',
-      color: 'primary',
-      variant: 'soft',
-      onClick: () => { tables.value.splice(Math.min(ti, tables.value.length), 0, removed) },
-    }],
-  })
+}
+
+function askRemoveTable(ti: number) {
+  const t = tables.value[ti]
+  if (!t) return
+  if (!t.name.trim() && !t.columns.length) return removeTable(ti)
+  confirmDelete.value = { title: tx.value.confirmDeleteTable(t.name.trim() || String(ti + 1)), run: () => removeTable(ti) }
+}
+
+function askRemoveColumn(t: SchemaTable, ci: number) {
+  const c = t.columns[ci]
+  if (!c) return
+  if (!c.name.trim() && !c.fk && t.rows.every(r => !r[ci]?.trim())) return removeColumn(t, ci)
+  confirmDelete.value = { title: tx.value.confirmDeleteColumn(c.name.trim() || String(ci + 1)), run: () => removeColumn(t, ci) }
+}
+
+function runDelete() {
+  confirmDelete.value?.run()
+  confirmDelete.value = null
 }
 
 function moveTable(ti: number, delta: -1 | 1) {
@@ -220,7 +226,7 @@ function toggleFk(c: SchemaColumn) {
             color="error"
             variant="ghost"
             :aria-label="tx.deleteTable"
-            @click="removeTable(ti)"
+            @click="askRemoveTable(ti)"
           />
         </div>
       </div>
@@ -363,7 +369,7 @@ function toggleFk(c: SchemaColumn) {
                         { label: tx.moveLeft, icon: 'i-lucide-arrow-left', disabled: ci === 0, onSelect: () => moveColumn(t, ci, -1) },
                         { label: tx.moveRight, icon: 'i-lucide-arrow-right', disabled: ci === t.columns.length - 1, onSelect: () => moveColumn(t, ci, 1) },
                       ], [
-                        { label: tx.deleteColumn, icon: 'i-lucide-trash-2', color: 'error', onSelect: () => removeColumn(t, ci) },
+                        { label: tx.deleteColumn, icon: 'i-lucide-trash-2', color: 'error', onSelect: () => askRemoveColumn(t, ci) },
                       ]]"
                     >
                       <UButton
@@ -454,5 +460,31 @@ function toggleFk(c: SchemaColumn) {
     >
       {{ tx.addTable }}
     </UButton>
+
+    <UModal
+      :open="!!confirmDelete"
+      :title="confirmDelete?.title"
+      :description="tx.confirmDeleteText"
+      @update:open="!$event && (confirmDelete = null)"
+    >
+      <template #footer>
+        <div class="flex justify-end gap-2 w-full">
+          <UButton
+            color="neutral"
+            variant="ghost"
+            @click="confirmDelete = null"
+          >
+            {{ tx.cancel }}
+          </UButton>
+          <UButton
+            color="error"
+            icon="i-lucide-trash-2"
+            @click="runDelete"
+          >
+            {{ tx.delete }}
+          </UButton>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>

@@ -155,7 +155,7 @@ test/               Vitest unit tests (pure logic, no Nuxt context)
   teacher pages take a `lang` prop that defaults to German; only student pages pass the student's choice.
 - Student forms: check the Tab order by actually typing. In the table editor, Tab from the table name used to land
   on "Tabelle löschen" and the next Enter deleted the table. DOM order = tab order; place actions visually with
-  grid/order instead, and make destructive one-click actions undoable (toast with "Rückgängig").
+  grid/order instead, and let destructive actions ask first (confirmation modal; skip it when nothing is lost).
 - Data attributes on Nuxt UI inputs may end up on the wrapper or on the `<input>`; the `focus()` helper in
   `SchemaTablesInput.vue` handles both.
 - `@click="fn"` passes the event as first argument; for functions with an optional parameter (`exportPdf(force)`)
