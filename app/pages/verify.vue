@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Teacher: check student PDFs (one or a whole class). The PDF is read in the browser; only the signed payload
-// (hash, run, time) goes to the server. The name never leaves this page; answers only for an AI suggestion
-// the teacher asks for (/api/grade, not stored).
+// (hash, run, time) goes to the server. The name never leaves this browser; answers only for an AI suggestion
+// the teacher asks for (/api/grade, not stored). The list with the teacher's points is kept in localStorage.
 definePageMeta({ layout: 'dashboard', middleware: 'auth' })
 useHead({ title: 'PDF prüfen · exam' })
 
@@ -24,6 +24,10 @@ type Result = {
   code: string
   server: VerifyResponse | null
   grading: Grading
+  /** Points the teacher set per block; they override the AI suggestion */
+  points: Record<string, number>
+  /** The teacher marked this PDF as done */
+  done: boolean
 }
 
 // One entry per dropped file; `failure` when the PDF has no exam data
@@ -43,6 +47,60 @@ const checking = computed(() => items.value.some(i => i.checking))
 const dateTime = new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' })
 
 const { data: ai } = await useFetch<{ enabled: boolean, model: string | null }>('/api/grade', { key: 'ai-status' })
+
+// --- Local storage: the list survives a reload. Per teacher, because school computers are shared. Names and
+// answers stay in this browser; "Leeren" removes them. ---
+const { user } = useUserSession()
+const storageKey = computed(() => `exam:verify:${user.value?.id}`)
+let restored = false
+
+onMounted(() => {
+  try {
+    const stored = JSON.parse(localStorage.getItem(storageKey.value) ?? 'null') as { items?: Item[] } | null
+    if (Array.isArray(stored?.items)) {
+      items.value = stored.items.map(i => reactive<Item>({
+        ...i,
+        key: nextKey++,
+        checking: false,
+        result: i.result
+          ? { ...i.result, points: i.result.points ?? {}, done: !!i.result.done, grading: i.result.grading.state === 'done' ? i.result.grading : { state: 'idle' } }
+          : null,
+      }))
+      selectedKey.value = items.value[0]?.key ?? null
+    }
+  }
+  catch {
+    // Unreadable: start with an empty list
+  }
+  restored = true
+  refreshServer()
+})
+
+watch(items, () => {
+  if (!restored) return
+  try {
+    const keep = items.value.filter(i => !i.checking)
+    if (keep.length) localStorage.setItem(storageKey.value, JSON.stringify({ items: keep }))
+    else localStorage.removeItem(storageKey.value)
+  }
+  catch {
+    // Storage full or unavailable: the list only lives in memory
+  }
+}, { deep: true })
+
+// Restored entries: fetch the run state again (points or the end may have changed since)
+async function refreshServer() {
+  for (const item of items.value) {
+    const r = item.result
+    if (!r?.embedded.signature) continue
+    try {
+      r.server = await $fetch<VerifyResponse>('/api/verify', { method: 'POST', body: r.embedded.signature })
+    }
+    catch {
+      // Offline or logged out: keep the stored state
+    }
+  }
+}
 
 async function checkFiles(files: FileList | File[] | null | undefined) {
   const list = [...(files ?? [])].filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'))
@@ -75,7 +133,7 @@ async function check(file: File, item: Item) {
     if (embedded.signature) {
       server = await $fetch<VerifyResponse>('/api/verify', { method: 'POST', body: embedded.signature })
     }
-    item.result = { fileName: file.name, embedded, hashMatches, code: verificationCode(hash), server, grading: { state: 'idle' } }
+    item.result = { fileName: file.name, embedded, hashMatches, code: verificationCode(hash), server, grading: { state: 'idle' }, points: {}, done: false }
   }
   catch (err) {
     item.failure = errorMessage(err, (err as Error)?.message || 'Prüfung fehlgeschlagen')
@@ -88,6 +146,29 @@ async function check(file: File, item: Item) {
 function onDrop(e: DragEvent) {
   dragging.value = false
   checkFiles(e.dataTransfer?.files)
+}
+
+// Removing asks first once the teacher has graded or marked something (that work would be lost)
+const confirmRemove = ref<{ title: string, run: () => void } | null>(null)
+const hasWork = (i: Item) => !!i.result && (i.result.done || Object.keys(i.result.points).length > 0)
+
+function askRemove(item: Item) {
+  if (!hasWork(item)) return removeItem(item.key)
+  confirmRemove.value = { title: `„${item.result!.embedded.submission.name}“ entfernen?`, run: () => removeItem(item.key) }
+}
+
+function askClear() {
+  const clear = () => {
+    items.value = []
+    selectedKey.value = null
+  }
+  if (!items.value.some(hasWork)) return clear()
+  confirmRemove.value = { title: 'Liste leeren?', run: clear }
+}
+
+function runRemove() {
+  confirmRemove.value?.run()
+  confirmRemove.value = null
 }
 
 function removeItem(key: number) {
@@ -124,6 +205,42 @@ async function gradeAll() {
 }
 
 const gradeOf = (r: Result | null, blockId: string) => r?.grading.result?.blocks.find(b => b.id === blockId) ?? null
+
+// Blocks with a maximum: from the run snapshot, or from the AI result if there is no snapshot
+function scoredBlocks(r: Result): { id: string, label: string, maxPoints: number }[] {
+  const snapshot = r.server?.snapshot
+  if (snapshot) {
+    return snapshot.blocks.flatMap(b => ((b.type === 'schema-answer' || b.type === 'freetext') && b.points !== undefined
+      ? [{ id: b.id, label: b.label || b.id, maxPoints: b.points }]
+      : []))
+  }
+  return r.grading.result?.blocks.flatMap(b => (b.maxPoints === null ? [] : [{ id: b.id, label: b.label, maxPoints: b.maxPoints }])) ?? []
+}
+
+// The teacher's points win over the AI suggestion
+function pointsOf(r: Result, blockId: string): number | null {
+  return r.points[blockId] ?? gradeOf(r, blockId)?.points ?? null
+}
+
+function setPoints(r: Result, blockId: string, value: number | null | undefined) {
+  const { [blockId]: _, ...rest } = r.points
+  r.points = value === null || value === undefined || Number.isNaN(value) ? rest : { ...rest, [blockId]: value }
+}
+
+/** Sum over scored blocks; `complete` once every block has points (only then percent and grade are shown) */
+function scoreOf(r: Result) {
+  const blocks = scoredBlocks(r)
+  if (!blocks.length) return null
+  const values = blocks.map(b => pointsOf(r, b.id))
+  if (values.every(v => v === null)) return null
+  return {
+    total: values.reduce<number>((s, v) => s + (v ?? 0), 0),
+    max: blocks.reduce((s, b) => s + b.maxPoints, 0),
+    complete: values.every(v => v !== null),
+    edited: blocks.some(b => b.id in r.points),
+  }
+}
+const showPoints = computed(() => !!ai.value?.enabled || items.value.some(i => i.result && scoredBlocks(i.result).length))
 const formatPoints = (n: number) => n.toLocaleString('de-DE', { maximumFractionDigits: 1 })
 // Share of the maximum for the grade key; empty without a maximum
 const formatPercent = (total: number | null | undefined, max: number | null | undefined) =>
@@ -137,24 +254,27 @@ const formatScore = (total: number | null | undefined, max: number | null | unde
 // --- CSV for the grade book (semicolon + BOM: opens correctly in German Excel) ---
 function exportCsv() {
   const done = items.value.flatMap(i => (i.result ? [i.result] : []))
-  const blockCols = done.find(r => r.grading.result)?.grading.result?.blocks.filter(b => b.maxPoints !== null) ?? []
+  const blockCols = done.map(scoredBlocks).find(b => b.length) ?? []
   // Leading = + - @ would be read as a formula by spreadsheet apps
   const esc = (v: string) => `"${(/^[=+\-@]/.test(v) ? `'${v}` : v).replace(/"/g, '""')}"`
-  const header = ['Name', 'Datei', 'Signatur', 'Prüfcode', 'Seite verlassen', ...blockCols.map(b => `${b.label} (max. ${formatPoints(b.maxPoints!)})`), 'KI-Punkte', 'Maximal', 'Prozent', 'Note (IHK)']
+  const header = ['Name', 'Datei', 'Signatur', 'Prüfcode', 'Seite verlassen', 'Fertig', ...blockCols.map(b => `${b.label} (max. ${formatPoints(b.maxPoints)})`), 'Punkte', 'Maximal', 'Prozent', 'Note (IHK)']
   const lines = done.map((r) => {
-    const g = r.grading.result
+    const s = scoreOf(r)
+    // Percent and grade only once every task has points
+    const g = s?.complete ? s : null
     return [
       r.embedded.submission.name,
       r.fileName,
       verdictOf(r).title,
       r.code,
       r.embedded.submission.focus ? focusSummary(r.embedded.submission.focus) : '',
+      r.done ? 'ja' : 'nein',
       ...blockCols.map((b) => {
-        const p = g?.blocks.find(x => x.id === b.id)?.points
-        return p === null || p === undefined ? '' : formatPoints(p)
+        const p = pointsOf(r, b.id)
+        return p === null ? '' : formatPoints(p)
       }),
-      g?.total !== null && g?.total !== undefined ? formatPoints(g.total) : '',
-      g?.max !== null && g?.max !== undefined ? formatPoints(g.max) : '',
+      s ? formatPoints(s.total) : '',
+      s ? formatPoints(s.max) : '',
       formatPercent(g?.total, g?.max),
       ihkGrade(g?.total, g?.max)?.grade ?? '',
     ].map(v => esc(String(v))).join(';')
@@ -201,6 +321,7 @@ const rows = computed(() => {
       answer: answers[b.id],
       solution: (b as { solution: unknown }).solution,
       askCardinality: b.type === 'schema-answer' && !!b.askCardinality,
+      maxPoints: (b as { points?: number }).points ?? null,
     }))
   }
   // No access or unsigned: show answers only (structure from the submission itself)
@@ -211,6 +332,7 @@ const rows = computed(() => {
     answer,
     solution: undefined,
     askCardinality: asTables(answer).some(t => t.columns.some(c => c.fk?.cardinality)),
+    maxPoints: gradeOf(r, id)?.maxPoints ?? null,
   }))
 })
 
@@ -304,7 +426,7 @@ const asText = (v: unknown) => (typeof v === 'string' ? v : '')
                 size="sm"
                 color="neutral"
                 variant="ghost"
-                @click="items = []; selectedKey = null"
+                @click="askClear"
               >
                 Leeren
               </UButton>
@@ -314,6 +436,9 @@ const asText = (v: unknown) => (typeof v === 'string' ? v : '')
             <table class="w-full text-sm">
               <thead class="text-left text-muted">
                 <tr class="border-b border-default">
+                  <th class="w-0 pl-2 py-2">
+                    <span class="sr-only">Fertig</span>
+                  </th>
                   <th class="px-4 py-2 font-medium">
                     Name
                   </th>
@@ -327,10 +452,10 @@ const asText = (v: unknown) => (typeof v === 'string' ? v : '')
                     Verlassen
                   </th>
                   <th
-                    v-if="ai?.enabled"
+                    v-if="showPoints"
                     class="px-4 py-2 font-medium"
                   >
-                    KI-Punkte
+                    Punkte
                   </th>
                   <th class="w-0" />
                 </tr>
@@ -343,10 +468,23 @@ const asText = (v: unknown) => (typeof v === 'string' ? v : '')
                   :class="item.key === selectedKey ? 'bg-primary/10' : 'hover:bg-elevated/50'"
                   @click="selectedKey = item.key"
                 >
+                  <td class="pl-2 py-2">
+                    <UButton
+                      v-if="item.result"
+                      :icon="item.result.done ? 'i-lucide-circle-check' : 'i-lucide-circle'"
+                      size="xs"
+                      :color="item.result.done ? 'primary' : 'neutral'"
+                      variant="ghost"
+                      :aria-label="item.result.done ? 'Als nicht fertig markieren' : 'Als fertig markieren'"
+                      :aria-pressed="item.result.done"
+                      @click.stop="item.result.done = !item.result.done"
+                    />
+                  </td>
                   <td class="px-4 py-2">
                     <span
                       v-if="item.result"
                       class="font-medium"
+                      :class="{ 'text-muted line-through decoration-muted': item.result.done }"
                     >{{ item.result.embedded.submission.name }}</span>
                     <span
                       v-else
@@ -393,7 +531,7 @@ const asText = (v: unknown) => (typeof v === 'string' ? v : '')
                     </span>
                   </td>
                   <td
-                    v-if="ai?.enabled"
+                    v-if="showPoints"
                     class="px-4 py-2 tabular-nums whitespace-nowrap"
                   >
                     <template v-if="item.result">
@@ -403,13 +541,27 @@ const asText = (v: unknown) => (typeof v === 'string' ? v : '')
                         class="size-4 animate-spin text-muted"
                       />
                       <span
-                        v-else-if="item.result.grading.state === 'error'"
+                        v-else-if="item.result.grading.state === 'error' && !scoreOf(item.result)"
                         class="text-error"
                         :title="item.result.grading.error"
                       >Fehler</span>
-                      <template v-else-if="item.result.grading.result?.total != null">
-                        {{ formatPoints(item.result.grading.result.total) }} / {{ formatPoints(item.result.grading.result.max!) }}
-                        <span class="text-muted whitespace-nowrap">({{ formatScore(item.result.grading.result.total, item.result.grading.result.max) }})</span>
+                      <template v-else-if="scoreOf(item.result)">
+                        {{ formatPoints(scoreOf(item.result)!.total) }} / {{ formatPoints(scoreOf(item.result)!.max) }}
+                        <span
+                          v-if="scoreOf(item.result)!.complete"
+                          class="text-muted whitespace-nowrap"
+                        >({{ formatScore(scoreOf(item.result)!.total, scoreOf(item.result)!.max) }})</span>
+                        <span
+                          v-else
+                          class="text-warning"
+                          title="Noch nicht alle Aufgaben bewertet"
+                        >(unvollständig)</span>
+                        <UIcon
+                          v-if="scoreOf(item.result)!.edited"
+                          name="i-lucide-pencil"
+                          class="size-3.5 align-[-2px] text-muted"
+                          title="Von dir angepasst"
+                        />
                       </template>
                       <span
                         v-else-if="item.result.grading.state === 'done'"
@@ -424,7 +576,7 @@ const asText = (v: unknown) => (typeof v === 'string' ? v : '')
                       color="neutral"
                       variant="ghost"
                       aria-label="Aus der Liste entfernen"
-                      @click.stop="removeItem(item.key)"
+                      @click.stop="askRemove(item)"
                     />
                   </td>
                 </tr>
@@ -522,12 +674,10 @@ const asText = (v: unknown) => (typeof v === 'string' ? v : '')
             description="Die Prüfung gehört einer anderen Lehrkraft und ist nicht geteilt."
           />
 
-          <!-- AI suggestion for this PDF -->
-          <div
-            v-if="ai?.enabled && result.server?.access !== false"
-            class="flex flex-wrap items-center gap-3 rounded-lg border border-default p-3"
-          >
+          <!-- Grading of this PDF: AI suggestion, points (AI or teacher), done -->
+          <div class="flex flex-wrap items-center gap-3 rounded-lg border border-default p-3">
             <UButton
+              v-if="ai?.enabled && result.server?.access !== false"
               icon="i-lucide-sparkles"
               variant="soft"
               :loading="result.grading.state === 'running'"
@@ -536,29 +686,49 @@ const asText = (v: unknown) => (typeof v === 'string' ? v : '')
               {{ result.grading.state === 'done' ? 'KI-Vorschlag neu erstellen' : 'KI-Vorschlag erstellen' }}
             </UButton>
             <p
-              v-if="result.grading.result"
+              v-if="scoreOf(result)"
               class="font-semibold"
             >
-              <template v-if="result.grading.result.total !== null">
-                Vorschlag: {{ formatPoints(result.grading.result.total) }} von {{ formatPoints(result.grading.result.max!) }} Punkten
-                ({{ formatPercent(result.grading.result.total, result.grading.result.max) }})
-                <template v-if="ihkGrade(result.grading.result.total, result.grading.result.max)">
-                  · IHK-Note {{ ihkGrade(result.grading.result.total, result.grading.result.max)!.grade }}
-                  ({{ ihkGrade(result.grading.result.total, result.grading.result.max)!.label }})
+              {{ scoreOf(result)!.edited ? 'Punkte' : 'Vorschlag' }}: {{ formatPoints(scoreOf(result)!.total) }} von {{ formatPoints(scoreOf(result)!.max) }} Punkten
+              <template v-if="scoreOf(result)!.complete">
+                ({{ formatPercent(scoreOf(result)!.total, scoreOf(result)!.max) }})
+                <template v-if="ihkGrade(scoreOf(result)!.total, scoreOf(result)!.max)">
+                  · IHK-Note {{ ihkGrade(scoreOf(result)!.total, scoreOf(result)!.max)!.grade }}
+                  ({{ ihkGrade(scoreOf(result)!.total, scoreOf(result)!.max)!.label }})
                 </template>
               </template>
-              <template v-else>
-                Vorschlag erstellt (die Prüfung hat keine Punkte)
-              </template>
+              <span
+                v-else
+                class="text-warning font-normal"
+              >(noch nicht alle Aufgaben bewertet)</span>
             </p>
             <p
-              v-else-if="result.grading.state === 'error'"
+              v-else-if="result.grading.state === 'done'"
+              class="font-semibold"
+            >
+              Vorschlag erstellt (die Prüfung hat keine Punkte)
+            </p>
+            <p
+              v-if="result.grading.state === 'error'"
               class="text-error text-sm"
             >
               {{ result.grading.error }}
             </p>
-            <p class="text-xs text-muted basis-full">
-              Nur ein Vorschlag von {{ ai.model }}: Die KI kann sich irren. Die Bewertung liegt bei dir.
+            <UButton
+              class="ms-auto"
+              :icon="result.done ? 'i-lucide-circle-check' : 'i-lucide-circle'"
+              :color="result.done ? 'primary' : 'neutral'"
+              :variant="result.done ? 'solid' : 'outline'"
+              :aria-pressed="result.done"
+              @click="result.done = !result.done"
+            >
+              Fertig
+            </UButton>
+            <p
+              v-if="ai?.enabled && result.server?.access !== false"
+              class="text-xs text-muted basis-full"
+            >
+              Nur ein Vorschlag von {{ ai.model }}: Die KI kann sich irren. Die Bewertung liegt bei dir, du kannst die Punkte bei jeder Aufgabe ändern.
             </p>
           </div>
 
@@ -567,9 +737,39 @@ const asText = (v: unknown) => (typeof v === 'string' ? v : '')
             :key="row.id"
             class="flex flex-col gap-3"
           >
-            <h2 class="text-lg font-semibold">
-              {{ row.label }}
-            </h2>
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <h2 class="text-lg font-semibold flex-1 min-w-0">
+                {{ row.label }}
+              </h2>
+              <div
+                v-if="row.maxPoints !== null"
+                class="flex items-center gap-2 text-sm"
+              >
+                <UInputNumber
+                  :model-value="pointsOf(result, row.id) ?? undefined"
+                  :min="0"
+                  :max="row.maxPoints"
+                  :step="0.5"
+                  :format-options="{ maximumFractionDigits: 1 }"
+                  locale="de-DE"
+                  placeholder="–"
+                  class="w-32"
+                  :aria-label="`Punkte für ${row.label}`"
+                  @update:model-value="setPoints(result, row.id, $event)"
+                />
+                <span class="text-muted whitespace-nowrap">/ {{ formatPoints(row.maxPoints) }} Punkte</span>
+                <UButton
+                  v-if="row.id in result.points && gradeOf(result, row.id)?.points != null && result.points[row.id] !== gradeOf(result, row.id)!.points"
+                  icon="i-lucide-undo-2"
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  :aria-label="`KI-Vorschlag übernehmen (${formatPoints(gradeOf(result, row.id)!.points!)})`"
+                  :title="`KI-Vorschlag übernehmen (${formatPoints(gradeOf(result, row.id)!.points!)})`"
+                  @click="setPoints(result, row.id, null)"
+                />
+              </div>
+            </div>
             <div
               class="grid gap-4"
               :class="row.solution !== undefined ? 'lg:grid-cols-2' : ''"
@@ -663,6 +863,32 @@ const asText = (v: unknown) => (typeof v === 'string' ? v : '')
           </section>
         </template>
       </div>
+
+      <UModal
+        :open="!!confirmRemove"
+        :title="confirmRemove?.title"
+        description="Deine Punkte und Fertig-Markierungen gehen dabei verloren."
+        @update:open="!$event && (confirmRemove = null)"
+      >
+        <template #footer>
+          <div class="flex justify-end gap-2 w-full">
+            <UButton
+              color="neutral"
+              variant="ghost"
+              @click="confirmRemove = null"
+            >
+              Abbrechen
+            </UButton>
+            <UButton
+              color="error"
+              icon="i-lucide-trash-2"
+              @click="runRemove"
+            >
+              Entfernen
+            </UButton>
+          </div>
+        </template>
+      </UModal>
     </template>
   </UDashboardPanel>
 </template>
