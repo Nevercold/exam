@@ -20,20 +20,20 @@
     "keygen": "node scripts/keygen.mjs"
   },
   "dependencies": {
-    "@iconify-json/lucide": "^1.2.153",
+    "@iconify-json/lucide": "^1.2.158",
     "@libsql/client": "^0.18.0",
     "@modelcontextprotocol/sdk": "^1.32.2",
-    "@nuxt/ui": "^4.12.0",
+    "@nuxt/ui": "^4.13.0",
     "drizzle-orm": "^0.45.4",
     "markdown-it": "^15.0.3",
     "nuxt": "^4.6.4",
     "nuxt-auth-utils": "^0.6.2",
     "pdf-lib": "^1.17.1",
-    "pdfmake": "^0.3.14",
+    "pdfmake": "^0.3.15",
     "tailwindcss": "^4.3.5",
     "uqr": "^0.1.3",
-    "vue": "^3.5.45",
-    "vue-router": "^5.4.0",
+    "vue": "^3.5.46",
+    "vue-router": "^5.5.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
@@ -41,9 +41,9 @@
     "@types/markdown-it": "^14.2.0",
     "@types/pdfmake": "^0.3.3",
     "drizzle-kit": "^0.31.11",
-    "eslint": "^10.14.0",
+    "eslint": "^10.15.0",
     "typescript": "^6.0.3",
-    "vitest": "^5.1.0",
+    "vitest": "^5.1.1",
     "vue-tsc": "^3.3.14"
   }
 }
